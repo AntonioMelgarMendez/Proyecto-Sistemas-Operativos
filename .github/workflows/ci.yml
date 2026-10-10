@@ -1,0 +1,11 @@
+name: C17 monitor checks
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Strict build, unit, stress, fault injection and terminal tests
+        run: make check
+      - name: Address and undefined behavior sanitizers
+        run: make sanitize

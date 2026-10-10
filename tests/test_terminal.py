@@ -1,0 +1,137 @@
+#!/usr/bin/env python3
+"""Integration tests using a real POSIX pseudoterminal, including restoration."""
+import fcntl
+import os
+import pty
+import re
+import select
+import signal
+import struct
+import subprocess
+import sys
+import termios
+import time
+import unittest
+from pathlib import Path
+
+BINARY = str(Path(sys.argv[1] if len(sys.argv) > 1 else 'build/monitor-demo').resolve())
+sys.argv = sys.argv[:1]
+
+
+class Terminal:
+    def __init__(self, *args, rows=34, columns=110, no_color=False):
+        self.master, self.slave = pty.openpty()
+        self.resize(rows, columns)
+        self.original = termios.tcgetattr(self.slave)
+        env = dict(os.environ, TERM='xterm-256color')
+        # The agent/CI environment may itself set NO_COLOR. Test both behaviors.
+        env.pop('NO_COLOR', None)
+        if no_color:
+            env['NO_COLOR'] = '1'
+        self.process = subprocess.Popen([BINARY, *args], stdin=self.slave,
+                                        stdout=self.slave, stderr=self.slave, env=env)
+        self.output = b''
+
+    def resize(self, rows, columns):
+        fcntl.ioctl(self.slave, termios.TIOCSWINSZ, struct.pack('HHHH', rows, columns, 0, 0))
+
+    def read(self):
+        if select.select([self.master], [], [], .05)[0]:
+            self.output += os.read(self.master, 65536)
+
+    def until(self, marker, timeout=6):
+        deadline = time.monotonic() + timeout
+        while marker not in self.output:
+            if time.monotonic() > deadline:
+                raise AssertionError(f'timeout waiting for {marker!r}: {self.output[-1000:]!r}')
+            self.read()
+
+    def send(self, data):
+        os.write(self.master, data)
+
+    def finish(self, expected=0):
+        # Drain while waiting: a full PTY must not deadlock the renderer.
+        deadline = time.monotonic() + 4
+        while self.process.poll() is None:
+            self.read()
+            if time.monotonic() > deadline:
+                raise AssertionError('terminal process did not exit')
+        while select.select([self.master], [], [], .05)[0]:
+            self.read()
+        assert self.process.returncode == expected, self.output[-1000:]
+        assert termios.tcgetattr(self.slave) == self.original, 'termios was not restored'
+        assert b'\x1b[?25h\x1b[?1049l' in self.output, 'cursor/screen not restored'
+
+    def close(self):
+        if self.process.poll() is None:
+            self.process.kill()
+            self.process.wait()
+        os.close(self.master)
+        os.close(self.slave)
+
+
+class TerminalTests(unittest.TestCase):
+    def test_guided_demos_colors_speed_and_finish(self):
+        for scenario in ('producer', 'consumer'):
+            with self.subTest(scenario=scenario):
+                t = Terminal('--scenario', scenario, '--capacity', '3', '--items', '7', '--delay', '30')
+                try:
+                    t.until(b'BLOQUEO REAL OBSERVADO')
+                    for color in (b'\x1b[1;36m', b'\x1b[1;35m', b'\x1b[1;33m'):
+                        self.assertIn(color, t.output)
+                    # A user-controlled demo must remain blocked before Enter.
+                    marker = len(t.output)
+                    for _ in range(4):
+                        t.read()
+                    self.assertNotIn(b'COMPLETADO', t.output[marker:])
+                    t.send(b'-')
+                    t.until(b'Ritmo: 80 ms')
+                    t.send(b'+\n')
+                    t.until(b'COMPLETADO')
+                    self.assertRegex(t.output, rb'WAIT #[1-9]\d* > (?:GET|PUT) #[1-9]\d* > SIGNAL #[1-9]\d* > WAKE #[1-9]\d* > (?:PUT|GET) #[1-9]\d*')
+                    t.send(b'q')
+                    t.finish()
+                    self.assertIn(b'status=OK', t.output)
+                finally:
+                    t.close()
+
+    def test_exit_during_each_wait(self):
+        for scenario in ('producer', 'consumer'):
+            for sig in (None, signal.SIGINT, signal.SIGTERM, signal.SIGQUIT):
+                with self.subTest(scenario=scenario, signal=sig):
+                    t = Terminal('--scenario', scenario, '--capacity', '1', '--delay', '0')
+                    try:
+                        t.until(b'BLOQUEO REAL OBSERVADO')
+                        if sig is None:
+                            t.send(b'q')
+                        else:
+                            t.process.send_signal(sig)
+                        t.finish(0 if sig is None else 128 + sig)
+                        self.assertIn(b'status=CANCELLED', t.output)
+                    finally:
+                        t.close()
+
+    def test_resize_and_no_color(self):
+        t = Terminal('--scenario', 'consumer', '--delay', '0', rows=10, columns=40, no_color=True)
+        try:
+            t.until(b'amplia la terminal')
+            t.resize(24, 80)
+            t.until(b'BLOQUEO REAL OBSERVADO')
+            self.assertNotRegex(t.output, rb'\x1b\[1;3[0-7]m')
+            t.send(b'q')
+            t.finish()
+        finally:
+            t.close()
+
+    def test_automatic_ui(self):
+        t = Terminal('--scenario', 'consumer', '--items', '4', '--delay', '10', '--auto', '--no-color')
+        try:
+            t.until(b'BLOQUEO REAL OBSERVADO')
+            t.until(b'status=OK')
+            t.finish()
+        finally:
+            t.close()
+
+
+if __name__ == '__main__':
+    unittest.main(verbosity=2)

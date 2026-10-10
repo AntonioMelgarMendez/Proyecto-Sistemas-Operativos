@@ -27,3 +27,19 @@ $(BUILD)/test-monitor: tests/test_monitor.c src/monitor.c include/monitor.h
 
 test: $(BUILD)/test-monitor
 	timeout 15s $(BUILD)/test-monitor
+
+.PHONY: check sanitize tsan
+$(BUILD)/test-demo-fail: $(SOURCES) tests/fail_create.c $(wildcard include/*.h)
+	@mkdir -p $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(SOURCES) tests/fail_create.c -Wl,--wrap=pthread_create $(LDLIBS) -o $@
+
+check: all test $(BUILD)/test-demo-fail
+	python3 tests/test_integration.py $(BUILD)/monitor-demo
+	python3 tests/test_terminal.py $(BUILD)/monitor-demo
+
+sanitize:
+	$(MAKE) BUILD=build/asan CFLAGS='-std=c17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=address,undefined -fno-omit-frame-pointer' check
+
+tsan:
+	$(MAKE) BUILD=build/tsan CFLAGS='-std=c17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=thread -fno-omit-frame-pointer' all test
+	timeout 30s build/tsan/monitor-demo --plain --scenario normal --capacity 1 --items 10000 --delay 0 > build/tsan/stress.log
