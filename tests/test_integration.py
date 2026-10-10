@@ -93,7 +93,7 @@ class Integration(unittest.TestCase):
                                              '--delay', '0'], timeout=5, capture_output=True,
                                             text=True, env={**os.environ, 'FAIL_CREATE_AT': str(fail_at)})
                     self.assertEqual(result.returncode, 1)
-                    self.assertIn('pthread_create:', result.stderr)
+                    self.assertIn('worker startup (pthread_create/sigmask):', result.stderr)
                     self.assertIn('status=ERROR', result.stdout)
 
 

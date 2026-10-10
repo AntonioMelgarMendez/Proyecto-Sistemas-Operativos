@@ -1,5 +1,7 @@
 #include "simulation.h"
 
+#include <signal.h>
+
 static void pace(Simulation *s)
 {
     int remaining = atomic_load(&s->delay_ms);
@@ -48,10 +50,21 @@ int simulation_init(Simulation *s, const Options *o)
 int simulation_start(Simulation *s, Actor actor)
 {
     if (s->started[actor]) return 0;
-    int error = pthread_create(&s->threads[actor], NULL,
-                               actor == PRODUCER ? producer : consumer, s);
+    /* Route process termination signals to main only. Workers inherit this
+     * temporary mask, so the sig_atomic_t handler flag is never used as a
+     * cross-thread synchronization primitive. Restore main's original mask. */
+    sigset_t blocked, previous;
+    sigemptyset(&blocked);
+    sigaddset(&blocked, SIGINT);
+    sigaddset(&blocked, SIGTERM);
+    sigaddset(&blocked, SIGQUIT);
+    int error = pthread_sigmask(SIG_BLOCK, &blocked, &previous);
+    if (error != 0) return error;
+    error = pthread_create(&s->threads[actor], NULL,
+                           actor == PRODUCER ? producer : consumer, s);
     if (error == 0) s->started[actor] = true;
-    return error;
+    int restore_error = pthread_sigmask(SIG_SETMASK, &previous, NULL);
+    return error != 0 ? error : restore_error;
 }
 
 void simulation_stop(Simulation *s)

@@ -108,7 +108,7 @@ int main(int argc, char **argv)
            snapshot.waits[PRODUCER], snapshot.waits[CONSUMER],
            (interrupted || cancelled) ? "CANCELLED" : valid && error == 0 ? "OK" : "ERROR");
     simulation_destroy(&simulation);
-    if (error != 0) fprintf(stderr, "pthread_create: %s\n", strerror(error));
+    if (error != 0) fprintf(stderr, "worker startup (pthread_create/sigmask): %s\n", strerror(error));
     if (interrupted) return 128 + interrupted;
     if (cancelled && error == 0) return 0;
     return valid && error == 0 ? 0 : 1;
