@@ -20,3 +20,10 @@ clean:
 	rm -rf build
 
 -include $(OBJECTS:.o=.d)
+
+$(BUILD)/test-monitor: tests/test_monitor.c src/monitor.c include/monitor.h
+	@mkdir -p $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_monitor.c src/monitor.c $(LDLIBS) -o $@
+
+test: $(BUILD)/test-monitor
+	timeout 15s $(BUILD)/test-monitor
