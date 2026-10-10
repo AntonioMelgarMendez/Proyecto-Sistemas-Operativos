@@ -24,10 +24,12 @@ make
 ```
 
 1. No presionar Enter anticipadamente; el productor llena cinco celdas.
-2. Señalar `ESPERANDO`, barra llena, `wait(not_full)` y “BLOQUEO REAL OBSERVADO”.
+2. Señalar la tarjeta “En espera”, las celdas llenas y “BUFFER LLENO”.
+   Presionar D para consultar `wait(not_full)` y volver con D.
 3. Explicar: la sexta inserción no se realiza; el mutex se libera al esperar.
 4. Presionar Enter; se crea el consumidor.
-5. Señalar GET → SIGNAL(not_full) → WAKE → PUT en la evidencia numerada.
+5. Observar **Espera → Señal → Reanudado** y abrir D para mostrar
+   GET → SIGNAL(not_full) → WAKE → PUT en la evidencia numerada.
 6. Aclarar que signal no transfiere el mutex ni garantiza ejecución instantánea.
 7. Al completar, verificar todos los elementos consumidos. Enter para salir.
 
@@ -38,8 +40,9 @@ make
 ```
 
 1. Comenzar sin productor: búfer vacío, consumidor amarillo.
-2. Explicar `wait(not_empty)`.
-3. Enter crea productor: PUT → SIGNAL(not_empty) → WAKE → GET.
+2. Señalar “BUFFER VACIO”; abrir D y explicar `wait(not_empty)`.
+3. Enter crea productor. La vista principal marca las tres etapas; D muestra
+   PUT → SIGNAL(not_empty) → WAKE → GET.
 4. Señalar el mismo ID de elemento entrando/saliendo. FIFO conserva orden.
 
 ## 4:15–5:30 · Código y corrección

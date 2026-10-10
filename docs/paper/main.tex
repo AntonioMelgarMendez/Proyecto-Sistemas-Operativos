@@ -153,7 +153,8 @@ de milisegundos baste para establecer el orden de planificación.
 Se emplean ANSI y \texttt{termios}, sin dependencias externas de desarrollo.
 Cian identifica al productor, magenta al consumidor, amarillo a la espera y verde
 a los resultados. Las etiquetas acompañan los colores para facilitar lectura.
-Se muestran celdas físicas, índices, ocupación, estadísticas y eventos numerados.
+La vista principal muestra tarjetas de los hilos, celdas y tres etapas de la demo.
+La tecla D abre índices, estadísticas y eventos numerados, evitando saturar la pantalla.
 
 Cada evento registra tiempo monotónico, tipo, actor, valor y ocupación. El historial
 es un anillo de 128 entradas. La copia del estado se realiza bajo el mutex; dibujo,
@@ -179,9 +180,10 @@ valores para cada combinación de cuatro capacidades y cuatro repeticiones:
 wrapper provoca fallos controlados de la primera y segunda creación de hilos en
 los tres escenarios.
 
-Cuatro métodos de pseudoterminal verifican demos guiadas, paleta, velocidad,
+Seis métodos de pseudoterminal verifican demos guiadas, paleta, velocidad,
 continuación, redimensionamiento, salida por teclado/señales y restauración exacta
-de los atributos de terminal. Los subcasos incluyen ambas clases de espera.
+de los atributos de terminal. Los subcasos incluyen ambas clases de espera, alternancia de detalles,
+locales UTF-8/ASCII y búferes densos en terminales pequeñas.
 
 \begin{table}[ht]
 \caption{Validación local observada}

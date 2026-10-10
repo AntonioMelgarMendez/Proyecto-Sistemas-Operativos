@@ -23,6 +23,7 @@ make
 En una terminal de al menos **80×24** (recomendado **110×34**):
 
 - **Enter**: cuando se observe el bloqueo, iniciar al otro hilo.
+- **D**: alternar entre vista visual y detalles técnicos.
 - **+ / -**: aumentar/reducir velocidad (menos/más milisegundos entre operaciones).
 - **Q**: cierre cooperativo, incluso durante una espera.
 - **Enter/Q al terminar**: cerrar la pantalla de resultados.
@@ -33,9 +34,21 @@ Los estados tienen etiquetas, no dependen solo del color. `NO_COLOR` y
 `--no-color` desactivan colores. Si tu entorno exporta `NO_COLOR`, ejecuta
 `env -u NO_COLOR ./build/monitor-demo` para mostrar la paleta.
 
-El búfer muestra posiciones físicas: `H` es la próxima extracción, `T` la próxima
-inserción y `{ }` resalta la última transferencia observada durante 350 ms.
-`H == T` puede significar lleno o vacío: se distingue con `count`.
+### Una vista limpia para la demo
+
+Dos tarjetas muestran el estado y avance de los hilos. El centro presenta el
+búfer con celdas grandes; la última transferencia se resalta en cian o magenta.
+Debajo aparece el estado actual y una secuencia breve: **Espera → Señal → Reanudado**.
+No hay párrafos explicativos ni cronología ocupando la pantalla principal.
+
+**D** abre los detalles: índices `H`/`T`, contadores de esperas, secuencia numerada
+y eventos recientes. D vuelve a la demo. Los detalles no pausan ni modifican los hilos.
+`H` es la próxima extracción y `T` la próxima inserción; su igualdad puede significar
+lleno o vacío, lo que se distingue con `count`.
+
+Bordes redondeados en locales UTF-8; alternativa ASCII automática en otros locales.
+Con muchos elementos y poco espacio, las celdas se compactan para mantener visibles
+el estado y los controles. `--plain` conserva la traza completa en texto.
 
 ## Opciones
 
@@ -71,8 +84,8 @@ WAIT actor=C  -> PUT actor=P -> SIGNAL actor=P -> WAKE actor=C -> GET actor=C
 
 `WAKE` significa retorno de `pthread_cond_wait` con el mutex recuperado; **no**
 garantiza por sí solo que el predicado permita operar. El `while` lo reevalúa.
-`signal` no cede inmediatamente el mutex. `#0` en la UI significa evento aún no
-observado. Las cinco referencias permanecen visibles después de la demo.
+`signal` no cede inmediatamente el mutex. `#0` en los detalles significa evento aún no
+observado. Las cinco referencias se conservan después de la demo y se consultan con D.
 
 El historial tiene 128 eventos: a velocidad máxima puede omitir eventos visuales.
 El modo texto indica `GAP omitted=...`; esto no implica pérdida de elementos del

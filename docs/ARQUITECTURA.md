@@ -66,6 +66,18 @@ El anillo tiene 128 eventos. A velocidad alta puede sobrescribirse; se avisa en
 texto y se conserva el criterio de integridad dentro del consumidor. Se recomienda
 ritmo 200–500 ms y pocos elementos para una explicación visual completa.
 
+## Jerarquía visual
+
+La vista principal usa tarjetas, celdas y tres etapas de la demo; no repite
+explicaciones del monitor. D alterna una vista técnica con índices, conteos de
+esperas, secuencia de cinco eventos y cronología. El observador sigue recogiendo
+la evidencia aunque los detalles estén ocultos. El modo plain no se modifica.
+
+El renderizador dibuja en un canvas acotado por celdas, no por bytes UTF-8. Solo
+usa glifos de una columna, con ASCII alternativo cuando el locale no es UTF-8.
+El layout reserva espacio para el pie; los búferes densos se compactan en terminales
+pequeñas. El teclado, el color opcional y la restauración de termios se conservan.
+
 ## Hilos y controles
 
 Un productor, un consumidor y el principal. Los atomics de `Simulation` son

@@ -5,6 +5,7 @@ Optional media dependencies: Pillow and ffmpeg. No generated/fake worker events.
 The MP4 has explanatory Spanish captions, not a voice-over. The .cast files
 contain unmodified, timestamped PTY output in asciicast v2 format.
 """
+import codecs
 import fcntl
 import json
 import os
@@ -84,19 +85,20 @@ def record(encoder, scenario):
     master, slave = pty.openpty()
     fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 110, 0, 0))
     original = termios.tcgetattr(slave)
-    environment = dict(os.environ, TERM='xterm-256color')
+    environment = dict(os.environ, TERM='xterm-256color', LC_ALL='C.UTF-8')
     environment.pop('NO_COLOR', None)
     command = ['./build/monitor-demo', '--scenario', scenario, '--capacity', '5',
                '--items', '12', '--delay', '250']
     process = subprocess.Popen(command, cwd=ROOT, stdin=slave, stdout=slave,
                                stderr=slave, env=environment)
+    decoder = codecs.getincrementaldecoder('utf-8')()
     pending = ''
     all_output = ''
     latest = ''
     started = time.monotonic()
     next_frame = started
     blocked_at = complete_at = None
-    resumed = quit_sent = False
+    resumed = quit_sent = details_sent = details_saved = False
     stem = 'productor' if scenario == 'producer' else 'consumidor'
     cast_path = MEDIA / (stem + '.cast')
     try:
@@ -110,7 +112,7 @@ def record(encoder, scenario):
                 if now - started > 25:
                     raise RuntimeError(f'recording timed out: {scenario}')
                 if select.select([master], [], [], .01)[0]:
-                    chunk = os.read(master, 65536).decode('utf-8', errors='replace')
+                    chunk = decoder.decode(os.read(master, 65536))
                     cast.write(json.dumps([round(now - started, 6), 'o', chunk]) + '\n')
                     pending += chunk
                     all_output += chunk
@@ -121,7 +123,7 @@ def record(encoder, scenario):
                             break
                         latest = pending[begin + 3:end]
                         pending = pending[end + 3:]
-                if latest and 'BLOQUEO REAL OBSERVADO' in latest and blocked_at is None:
+                if latest and ('BUFFER LLENO' if scenario == 'producer' else 'BUFFER VACIO') in latest and blocked_at is None:
                     blocked_at = now
                     caption = ['El hilo está esperando realmente en pthread_cond_wait.',
                                'La contraparte todavía no ha sido creada.']
@@ -133,14 +135,27 @@ def record(encoder, scenario):
                 if latest and 'COMPLETADO' in latest and complete_at is None:
                     complete_at = now
                     terminal_frame(latest, scenario, [
-                        'WAIT → operación contraparte → SIGNAL → WAKE → operación.',
-                        'La evidencia numerada corresponde a eventos reales.']).save(
+                        'Espera → Señal → Reanudado: tres etapas, sin texto adicional.',
+                        'D abre los índices, la cronología y los IDs de eventos.']).save(
                             MEDIA / (stem + '-completado.png'))
-                if complete_at is not None and now - complete_at >= 2 and not quit_sent:
+                if complete_at is not None and now - complete_at >= 1 and not details_sent:
+                    os.write(master, b'd')
+                    cast.write(json.dumps([round(now - started, 6), 'i', 'd']) + '\n')
+                    details_sent = True
+                if details_sent and 'EVENTOS RECIENTES' in latest and not details_saved:
+                    terminal_frame(latest, scenario, [
+                        'Detalles bajo demanda: la evidencia sigue disponible.',
+                        'D regresa a la vista visual sin alterar la sincronización.']).save(
+                            MEDIA / (stem + '-detalles.png'))
+                    details_saved = True
+                if complete_at is not None and now - complete_at >= 3 and not quit_sent:
                     os.write(master, b'q')
                     quit_sent = True
                 if latest and now >= next_frame:
-                    if complete_at is not None:
+                    if details_saved:
+                        caption = ['D: detalles técnicos solo cuando los necesitas.',
+                                   'Secuencia real de wait, signal y reanudación.']
+                    elif complete_at is not None:
                         caption = ['Todos los elementos consumidos; búfer vacío.',
                                    'El cierre despierta las esperas y luego se unen los hilos.']
                     elif resumed:
@@ -157,17 +172,17 @@ def record(encoder, scenario):
                     next_frame = now + 1 / FPS
                 if process.poll() is not None:
                     while select.select([master], [], [], .05)[0]:
-                        chunk = os.read(master, 65536).decode('utf-8', errors='replace')
+                        chunk = decoder.decode(os.read(master, 65536))
                         all_output += chunk
                         cast.write(json.dumps([round(time.monotonic() - started, 6), 'o', chunk]) + '\n')
                     break
         if process.returncode != 0 or 'status=OK' not in all_output:
             raise RuntimeError(f'demo failed: {all_output[-500:]}')
-        if blocked_at is None or complete_at is None or termios.tcgetattr(slave) != original:
+        if blocked_at is None or complete_at is None or not details_saved or termios.tcgetattr(slave) != original:
             raise RuntimeError('missing evidence or terminal not restored')
         summary = re.search(r'SUMMARY[^\r\n]+', all_output).group(0)
         return {'scenario': scenario, 'command': command, 'summary': summary,
-                'blocked_observed': True, 'terminal_restored': True}
+                'blocked_observed': True, 'details_view_recorded': True, 'terminal_restored': True}
     finally:
         if process.poll() is None:
             process.kill()

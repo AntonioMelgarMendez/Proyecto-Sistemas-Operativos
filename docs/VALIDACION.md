@@ -6,7 +6,7 @@ varían entre ejecuciones; no se publican como un benchmark.
 
 | Comando | Resultado observado |
 |---|---|
-| `make check` | PASS: unitarias, 6 métodos de integración y 4 de terminal |
+| `make check` | PASS: unitarias, 6 métodos de integración y 6 de terminal |
 | `make sanitize` | PASS fuera del sandbox: AddressSanitizer/UBSan, misma suite |
 | `make tsan` | PASS: unitarias y flujo de 10 000 elementos, capacidad 1 |
 | `git diff --check` | Sin errores de whitespace |
@@ -22,7 +22,9 @@ varían entre ejecuciones; no se publican como un benchmark.
 - Argumentos fuera de rango, incompletos y no numéricos.
 - Fallos inyectados en la primera y segunda llamada a pthread_create (3 escenarios).
 - Q y SIGINT/SIGTERM/SIGQUIT durante ambos bloqueos; join y terminal restaurada.
-- Colores activados, NO_COLOR, --no-color, controles +/-, Enter y resize.
+- Colores activados, NO_COLOR, --no-color, controles +/-, Enter, D y resize.
+- Detalles ocultos por defecto, evidencias conservadas y retorno a la vista visual.
+- UTF-8/ASCII y capacidad 16 con valores grandes en 80×24, 110×30 y 160×45.
 - Modo visual automático, modo texto y stdout redirigido sin escapes ANSI.
 
 ## Limitaciones y honestidad experimental
