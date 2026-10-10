@@ -1,5 +1,6 @@
 #include "app.h"
 #include "simulation.h"
+#include "ui.h"
 
 #include <inttypes.h>
 #include <signal.h>
@@ -37,13 +38,18 @@ int main(int argc, char **argv)
     struct sigaction action = { .sa_handler = on_signal };
     sigemptyset(&action.sa_mask);
     if (sigaction(SIGINT, &action, NULL) != 0 ||
-        sigaction(SIGTERM, &action, NULL) != 0) {
+        sigaction(SIGTERM, &action, NULL) != 0 ||
+        sigaction(SIGQUIT, &action, NULL) != 0) {
         perror("sigaction");
         return EXIT_FAILURE;
     }
     Simulation simulation;
     int error = simulation_init(&simulation, &options);
     if (error != 0) { fprintf(stderr, "monitor: %s\n", strerror(error)); return 1; }
+    Ui ui;
+    bool visual = ui_open(&ui, &options);
+    bool cancelled = false;
+    double waiting_since = 0;
     Actor first = options.scenario == SCENARIO_CONSUMER ? CONSUMER : PRODUCER;
     Actor second = first == PRODUCER ? CONSUMER : PRODUCER;
     bool released = options.scenario == SCENARIO_NORMAL;
@@ -51,29 +57,48 @@ int main(int argc, char **argv)
     if (error == 0 && released) error = simulation_start(&simulation, second);
     uint64_t last = 0;
     MonitorSnapshot snapshot;
-    printf("MONITORES C17 | %s | capacity=%zu items=%d\n",
+    if (!visual) printf("MONITORES C17 | %s | capacity=%zu items=%d\n",
            scenario_name(options.scenario), options.capacity, options.items);
-    while (error == 0 && !interrupted) {
+    while (error == 0 && !interrupted && !cancelled) {
         monitor_snapshot(simulation.monitor, &snapshot);
-        print_events(&snapshot, &last);
-        if (!released && snapshot.state[first] == WAITING) {
-            puts("DEMO: bloqueo observado bajo mutex; iniciando el otro hilo.");
-            error = simulation_start(&simulation, second);
-            released = error == 0;
+        bool complete = released && snapshot.state[PRODUCER] == FINISHED &&
+                        snapshot.state[CONSUMER] == FINISHED;
+        if (visual) ui_render(&ui, &options, &snapshot, released, complete,
+                              atomic_load(&simulation.delay_ms));
+        else print_events(&snapshot, &last);
+        if (complete && (!visual || options.automatic)) break;
+        int key = ui_key(&ui, visual ? 33 : 10);
+        if (key == 'q' || key == 'Q') { cancelled = !complete; break; }
+        if (complete && (key == '\n' || key == '\r')) break;
+        if (key == '+' || key == '-') {
+            int delay = atomic_load(&simulation.delay_ms) + (key == '+' ? -50 : 50);
+            if (delay < 0) delay = 0;
+            if (delay > 2000) delay = 2000;
+            atomic_store(&simulation.delay_ms, delay);
         }
-        if (released && snapshot.state[PRODUCER] == FINISHED &&
-            snapshot.state[CONSUMER] == FINISHED) break;
-        sleep_ms(10);
+        if (!released && snapshot.state[first] == WAITING) {
+            if (waiting_since == 0) waiting_since = monotonic_ms();
+            bool automatic = !visual || options.automatic;
+            bool proceed = automatic ? monotonic_ms() - waiting_since >= (visual ? 900 : 0)
+                                     : key == '\n' || key == '\r';
+            if (proceed) {
+                if (!visual) puts("DEMO: bloqueo observado bajo mutex; iniciando el otro hilo.");
+                error = simulation_start(&simulation, second);
+                released = error == 0;
+            }
+        }
     }
-    if (error != 0 || interrupted) simulation_stop(&simulation);
+    if (error != 0 || interrupted || cancelled) simulation_stop(&simulation);
     int join_error = simulation_join(&simulation);
     if (join_error != 0) {
         /* Never destroy mutex/conditions if a worker could still own them. */
+        ui_close(&ui);
         fprintf(stderr, "pthread_join: %s\n", strerror(join_error));
         return 1;
     }
     monitor_snapshot(simulation.monitor, &snapshot);
-    print_events(&snapshot, &last);
+    ui_close(&ui);
+    if (!visual) print_events(&snapshot, &last);
     bool valid = !atomic_load(&simulation.integrity_failed) &&
                  snapshot.produced == (uint64_t)options.items &&
                  snapshot.consumed == snapshot.produced && snapshot.count == 0;
@@ -81,9 +106,10 @@ int main(int argc, char **argv)
            " remaining=%zu waits_p=%" PRIu64 " waits_c=%" PRIu64 " status=%s\n",
            snapshot.produced, snapshot.consumed, snapshot.count,
            snapshot.waits[PRODUCER], snapshot.waits[CONSUMER],
-           interrupted ? "CANCELLED" : valid && error == 0 ? "OK" : "ERROR");
+           (interrupted || cancelled) ? "CANCELLED" : valid && error == 0 ? "OK" : "ERROR");
     simulation_destroy(&simulation);
     if (error != 0) fprintf(stderr, "pthread_create: %s\n", strerror(error));
     if (interrupted) return 128 + interrupted;
+    if (cancelled && error == 0) return 0;
     return valid && error == 0 ? 0 : 1;
 }
