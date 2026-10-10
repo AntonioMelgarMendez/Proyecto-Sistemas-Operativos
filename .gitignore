@@ -1,0 +1,7 @@
+build/
+*.o
+*.d
+__pycache__/
+*.aux
+*.log
+*.out
