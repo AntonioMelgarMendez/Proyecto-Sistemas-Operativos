@@ -43,3 +43,11 @@ sanitize:
 tsan:
 	$(MAKE) BUILD=build/tsan CFLAGS='-std=c17 -O1 -g -Wall -Wextra -Wpedantic -Werror -fsanitize=thread -fno-omit-frame-pointer' all test
 	timeout 30s build/tsan/monitor-demo --plain --scenario normal --capacity 1 --items 10000 --delay 0 > build/tsan/stress.log
+
+.PHONY: media paper
+media: all
+	python3 tools/create_demo.py
+
+TECTONIC ?= tectonic
+paper:
+	$(TECTONIC) docs/paper/main.tex

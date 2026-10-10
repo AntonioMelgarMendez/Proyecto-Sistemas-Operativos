@@ -1,0 +1,36 @@
+[
+  {
+    "scenario": "producer",
+    "command": [
+      "./build/monitor-demo",
+      "--scenario",
+      "producer",
+      "--capacity",
+      "5",
+      "--items",
+      "12",
+      "--delay",
+      "250"
+    ],
+    "summary": "SUMMARY produced=12 consumed=12 remaining=0 waits_p=4 waits_c=0 status=OK",
+    "blocked_observed": true,
+    "terminal_restored": true
+  },
+  {
+    "scenario": "consumer",
+    "command": [
+      "./build/monitor-demo",
+      "--scenario",
+      "consumer",
+      "--capacity",
+      "5",
+      "--items",
+      "12",
+      "--delay",
+      "250"
+    ],
+    "summary": "SUMMARY produced=12 consumed=12 remaining=0 waits_p=0 waits_c=9 status=OK",
+    "blocked_observed": true,
+    "terminal_restored": true
+  }
+]

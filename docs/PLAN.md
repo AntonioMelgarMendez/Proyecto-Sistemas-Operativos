@@ -20,7 +20,9 @@ La animación representa eventos reales; jamás se dibuja o duerme bajo el mutex
 6. README, paper IEEE, presentación ejecutiva y guion de video.
 
 Cada fase: implementar, validar, revisar diff, commit y push. No force push.
-El video final debe grabarlo el equipo; no presentar guiones como grabaciones.
+Se entrega un video técnico subtitulado generado desde ejecuciones reales.
+El equipo debe revisar y agregar su exposición/narración según lo requerido;
+no presentar guiones como grabaciones.
 
 ## Criterios
 
@@ -38,3 +40,10 @@ El video final debe grabarlo el equipo; no presentar guiones como grabaciones.
 Paper IEEE, presentación ejecutiva, código fuente y video explicativo.
 Entrega indicada: 10 de noviembre, 12 MD; exposición: 12 y 19 de noviembre,
 6:30–8:10 PM. Confirmar año y detalles con el docente. Máximo 5 integrantes.
+
+## Estado final de implementación
+
+Las seis fases de código/documentación están implementadas y verificadas. Se
+agregó una fase de medios: paper IEEE compilado, presentación PDF, video técnico
+subtitulado, capturas y grabaciones de terminal originales. Pendientes humanos:
+identificación del equipo, revisión académica, exposición y entrega en ECampus.
