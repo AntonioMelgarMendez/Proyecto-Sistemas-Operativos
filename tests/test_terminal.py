@@ -14,16 +14,19 @@ import time
 import unittest
 from pathlib import Path
 
+ANSI = re.compile(rb'\x1b\[[0-9;?]*[A-Za-z]')
+WAIT_MARKERS = {'producer': b'BUFFER LLENO', 'consumer': b'BUFFER VACIO'}
+
 BINARY = str(Path(sys.argv[1] if len(sys.argv) > 1 else 'build/monitor-demo').resolve())
 sys.argv = sys.argv[:1]
 
 
 class Terminal:
-    def __init__(self, *args, rows=34, columns=110, no_color=False):
+    def __init__(self, *args, rows=34, columns=110, no_color=False, locale='C.UTF-8'):
         self.master, self.slave = pty.openpty()
         self.resize(rows, columns)
         self.original = termios.tcgetattr(self.slave)
-        env = dict(os.environ, TERM='xterm-256color')
+        env = dict(os.environ, TERM='xterm-256color', LC_ALL=locale)
         # The agent/CI environment may itself set NO_COLOR. Test both behaviors.
         env.pop('NO_COLOR', None)
         if no_color:
@@ -44,6 +47,17 @@ class Terminal:
         while marker not in self.output:
             if time.monotonic() > deadline:
                 raise AssertionError(f'timeout waiting for {marker!r}: {self.output[-1000:]!r}')
+            self.read()
+
+    def frame(self):
+        frames = re.findall(rb'\x1b\[H(.*?)\x1b\[J', self.output, re.S)
+        return ANSI.sub(b'', frames[-1]).replace(b'\r', b'') if frames else b''
+
+    def until_frame(self, marker, timeout=6):
+        deadline = time.monotonic() + timeout
+        while marker not in self.frame():
+            if time.monotonic() > deadline:
+                raise AssertionError(f'timeout waiting for frame {marker!r}: {self.frame()!r}')
             self.read()
 
     def send(self, data):
@@ -76,7 +90,7 @@ class TerminalTests(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 t = Terminal('--scenario', scenario, '--capacity', '3', '--items', '7', '--delay', '30')
                 try:
-                    t.until(b'BLOQUEO REAL OBSERVADO')
+                    t.until_frame(WAIT_MARKERS[scenario])
                     for color in (b'\x1b[1;36m', b'\x1b[1;35m', b'\x1b[1;33m'):
                         self.assertIn(color, t.output)
                     # A user-controlled demo must remain blocked before Enter.
@@ -84,11 +98,24 @@ class TerminalTests(unittest.TestCase):
                     for _ in range(4):
                         t.read()
                     self.assertNotIn(b'COMPLETADO', t.output[marker:])
+                    self.assertNotIn(b'EVENTOS RECIENTES', t.frame())
+                    self.assertNotIn(b'Snapshot', t.frame())
+                    self.assertNotIn(b'WAIT #', t.frame())
+                    self.assertIn(b'D detalles', t.frame())
+                    t.send(b'd')
+                    t.until_frame(b'EVENTOS RECIENTES')
+                    self.assertIn(b'WAIT #', t.frame())
+                    t.send(b'D')
+                    t.until_frame(b'D detalles')
+                    self.assertNotIn(b'EVENTOS RECIENTES', t.frame())
                     t.send(b'-')
-                    t.until(b'Ritmo: 80 ms')
+                    t.until_frame(b'80 ms')
                     t.send(b'+\n')
-                    t.until(b'COMPLETADO')
-                    self.assertRegex(t.output, rb'WAIT #[1-9]\d* > (?:GET|PUT) #[1-9]\d* > SIGNAL #[1-9]\d* > WAKE #[1-9]\d* > (?:PUT|GET) #[1-9]\d*')
+                    t.until_frame(b'COMPLETADO')
+                    self.assertIn('● Reanudado'.encode(), t.frame())
+                    t.send(b'd')
+                    t.until_frame(b'EVENTOS RECIENTES')
+                    self.assertRegex(t.frame(), rb'(?s)WAIT #[1-9]\d* > (?:GET|PUT) #[1-9]\d* > SIGNAL #[1-9]\d*.*WAKE #[1-9]\d* > (?:PUT|GET) #[1-9]\d*')
                     t.send(b'q')
                     t.finish()
                     self.assertIn(b'status=OK', t.output)
@@ -101,7 +128,7 @@ class TerminalTests(unittest.TestCase):
                 with self.subTest(scenario=scenario, signal=sig):
                     t = Terminal('--scenario', scenario, '--capacity', '1', '--delay', '0')
                     try:
-                        t.until(b'BLOQUEO REAL OBSERVADO')
+                        t.until_frame(WAIT_MARKERS[scenario])
                         if sig is None:
                             t.send(b'q')
                         else:
@@ -116,8 +143,40 @@ class TerminalTests(unittest.TestCase):
         try:
             t.until(b'amplia la terminal')
             t.resize(24, 80)
-            t.until(b'BLOQUEO REAL OBSERVADO')
+            t.until_frame(WAIT_MARKERS['consumer'])
             self.assertNotRegex(t.output, rb'\x1b\[1;3[0-7]m')
+            t.send(b'q')
+            t.finish()
+        finally:
+            t.close()
+
+    def test_dense_buffer_preserves_controls_and_stages(self):
+        for columns, rows in ((80, 24), (110, 30), (160, 45)):
+            t = Terminal('--capacity', '16', '--items', '1000000', '--delay', '0',
+                         rows=rows, columns=columns)
+            try:
+                t.until_frame(WAIT_MARKERS['producer'])
+                frame = t.frame().decode('utf-8')
+                self.assertIn('Q salir', frame)
+                self.assertIn('Reanudado', frame)
+                for number in range(1, 17):
+                    self.assertIn(f'{number:03}', frame)
+                self.assertTrue(all(len(line) < columns for line in frame.splitlines()))
+                t.send(b'd')
+                t.until_frame(b'EVENTOS RECIENTES')
+                self.assertIn(b'Q salir', t.frame())
+                t.send(b'q')
+                t.finish()
+            finally:
+                t.close()
+
+    def test_ascii_locale_fallback(self):
+        t = Terminal('--scenario', 'consumer', '--delay', '0', locale='C')
+        try:
+            t.until_frame(WAIT_MARKERS['consumer'])
+            self.assertTrue(t.frame().isascii())
+            self.assertIn(b'+', t.frame())
+            self.assertIn(b'o Senal', t.frame())
             t.send(b'q')
             t.finish()
         finally:
@@ -126,7 +185,7 @@ class TerminalTests(unittest.TestCase):
     def test_automatic_ui(self):
         t = Terminal('--scenario', 'consumer', '--items', '4', '--delay', '10', '--auto', '--no-color')
         try:
-            t.until(b'BLOQUEO REAL OBSERVADO')
+            t.until_frame(WAIT_MARKERS['consumer'])
             t.until(b'status=OK')
             t.finish()
         finally:

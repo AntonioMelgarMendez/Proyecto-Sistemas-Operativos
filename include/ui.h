@@ -6,9 +6,9 @@
 #include <termios.h>
 
 typedef struct {
-    bool active, color;
+    bool active, color, unicode, details;
     struct termios saved;
-    int rows, columns, line;
+    int rows, columns;
     uint64_t transfer_sequence, proof[5];
     double flash_until;
 } Ui;

@@ -70,6 +70,7 @@ int main(int argc, char **argv)
         int key = ui_key(&ui, visual ? 33 : 10);
         if (key == 'q' || key == 'Q') { cancelled = !complete; break; }
         if (complete && (key == '\n' || key == '\r')) break;
+        if (key == 'd' || key == 'D') ui.details = !ui.details;
         if (key == '+' || key == '-') {
             int delay = atomic_load(&simulation.delay_ms) + (key == '+' ? -50 : 50);
             if (delay < 0) delay = 0;
