@@ -26,7 +26,9 @@ En una terminal de al menos **80×24** (recomendado **110×34**):
 - **D**: alternar entre vista visual y detalles técnicos.
 - **+ / -**: aumentar/reducir velocidad (menos/más milisegundos entre operaciones).
 - **Q**: cierre cooperativo, incluso durante una espera.
-- **Enter/Q al terminar**: cerrar la pantalla de resultados.
+- **M**: abrir/cerrar el menú; **1 / 2 / 3** seleccionan productor, consumidor o flujo normal.
+- **R**: repetir el caso actual desde cero.
+- **Enter al terminar**: abrir el menú para elegir otro caso; **Q** sale.
 - `Ctrl+C`, `SIGTERM` y `SIGQUIT`: cerrar y restaurar la terminal.
 
 Cian = productor; magenta = consumidor; amarillo = espera normal; verde = resultado.
@@ -38,7 +40,10 @@ Los estados tienen etiquetas, no dependen solo del color. `NO_COLOR` y
 
 Dos tarjetas muestran el estado y avance de los hilos. El centro presenta el
 búfer con celdas grandes; la última transferencia se resalta en cian o magenta.
-Debajo aparece el estado actual y una secuencia breve: **Espera → Señal → Reanudado**.
+Una flecha marca el próximo elemento FIFO en el búfer circular. El flujo
+productor → inserción → búfer → extracción → consumidor resalta transferencias reales.
+Debajo aparecen la causa de espera y la evidencia histórica: **Esperó → Recibió señal → Continuó**.
+Esta evidencia no es el estado actual; recibir una señal no implica continuar inmediatamente.
 No hay párrafos explicativos ni cronología ocupando la pantalla principal.
 
 **D** abre los detalles: índices `H`/`T`, contadores de esperas, secuencia numerada
@@ -49,6 +54,21 @@ lleno o vacío, lo que se distingue con `count`.
 Bordes redondeados en locales UTF-8; alternativa ASCII automática en otros locales.
 Con muchos elementos y poco espacio, las celdas se compactan para mantener visibles
 el estado y los controles. `--plain` conserva la traza completa en texto.
+
+### Cambiar de caso sin reiniciar el programa
+
+Pulsa **M**, luego **1** (bloqueo del productor), **2** (bloqueo del consumidor)
+o **3** (flujo normal). **R** repite el escenario actual. El menú **no pausa** los
+hilos: al elegir, se cancela cooperativamente la ejecución anterior, se unen sus
+hilos y se crea un monitor nuevo. Contadores y evidencia vuelven a cero.
+
+Se conservan capacidad, ritmo y cantidad objetivo. Si el productor necesita más
+elementos para demostrar lleno, el objetivo sube a `capacidad + 1`; el menú avisa.
+Los casos seleccionados son guiados: Enter inicia la contraparte tras el bloqueo.
+El flujo normal inicia ambos hilos. Solo se muestra **FIFO verificado** cuando
+la validación de secuencia y los contadores confirman una ejecución correcta.
+
+![Menú de escenarios](docs/media/menu-modos.png)
 
 ## Opciones
 

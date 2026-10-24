@@ -112,3 +112,17 @@ latencia de salida. No representa un bloqueo por condición.
 3. POSIX, pthread_cond_signal / pthread_cond_broadcast:
    https://pubs.opengroup.org/onlinepubs/9699919799/functions/pthread_cond_broadcast.html
 4. GCC, C Standards Support: https://gcc.gnu.org/projects/c-status.html
+
+## Sesiones interactivas y menú
+
+La terminal se abre una sola vez. `main` ejecuta sesiones independientes:
+crear monitor → iniciar hilos → observar → detener si corresponde → join →
+destruir. M muestra el menú sin pausar trabajadores; elegir 1/2/3 o R solicita
+terminar la sesión anterior antes de iniciar otra. Nunca se destruye un monitor
+con hilos vivos. Los fallos de creación restauran la terminal y retornan error.
+
+`ui_reset_session` elimina evidencia y animaciones anteriores. Se conserva el
+ritmo elegido y se desactiva la continuación automática al seleccionar un caso.
+La evidencia de recepción se marca al observar WAKE, no al emitir SIGNAL;
+no supone transferencia inmediata del mutex. El banner de éxito comprueba la
+integridad FIFO y los contadores, no solamente que ambos hilos hayan terminado.

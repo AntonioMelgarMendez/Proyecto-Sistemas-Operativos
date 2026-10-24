@@ -24,26 +24,34 @@ make
 ```
 
 1. No presionar Enter anticipadamente; el productor llena cinco celdas.
-2. Señalar la tarjeta “En espera”, las celdas llenas y “BUFFER LLENO”.
+2. Señalar la tarjeta “Esperando espacio”, las celdas llenas y “BUFFER LLENO”.
    Presionar D para consultar `wait(not_full)` y volver con D.
 3. Explicar: la sexta inserción no se realiza; el mutex se libera al esperar.
 4. Presionar Enter; se crea el consumidor.
-5. Observar **Espera → Señal → Reanudado** y abrir D para mostrar
+5. Observar la evidencia histórica **Esperó → Recibió señal → Continuó** y abrir D para mostrar
    GET → SIGNAL(not_full) → WAKE → PUT en la evidencia numerada.
 6. Aclarar que signal no transfiere el mutex ni garantiza ejecución instantánea.
-7. Al completar, verificar todos los elementos consumidos. Enter para salir.
+7. Al completar, verificar todos los elementos consumidos. Enter abre el menú para continuar sin reiniciar.
 
 ## 2:45–4:15 · Consumidor bloqueado
 
-```sh
-./build/monitor-demo --scenario consumer --capacity 5 --items 12 --delay 350
-```
+En la misma ejecución: **M → 2** (o **Enter → 2** desde el resultado).
 
 1. Comenzar sin productor: búfer vacío, consumidor amarillo.
 2. Señalar “BUFFER VACIO”; abrir D y explicar `wait(not_empty)`.
 3. Enter crea productor. La vista principal marca las tres etapas; D muestra
    PUT → SIGNAL(not_empty) → WAKE → GET.
 4. Señalar el mismo ID de elemento entrando/saliendo. FIFO conserva orden.
+
+Después del resultado, **M → 3** muestra flujo normal. **R** repite desde cero.
+Mostrar que el menú no pausa los hilos y que cambiar de caso durante una espera
+no cuelga el proceso. Los contadores y la evidencia se reinician; no se presenta
+una ejecución interrumpida como completada. Q cierra la aplicación.
+
+La flecha del búfer indica la próxima extracción, no una reordenación física de
+las celdas. El banner FIFO verificado requiere validación real, no solo igualdad
+de contadores. El video incluido muestra ambos casos y el menú; los cambios de
+modo dentro del mismo proceso también están cubiertos por pruebas PTY.
 
 ## 4:15–5:30 · Código y corrección
 

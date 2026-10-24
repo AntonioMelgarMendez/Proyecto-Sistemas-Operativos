@@ -50,3 +50,20 @@ varían entre ejecuciones; no se publican como un benchmark.
 - Ambas grabaciones PTY terminan con produced=12, consumed=12, remaining=0,
   status=OK; se verifica restauración de termios. Ver media/evidencia.json.
 - Los integrantes y datos institucionales quedan como campos por completar.
+
+## Revalidación del roadmap y menú — 24 de octubre de 2026
+
+- `make check`: PASS, unitarias, 6 métodos de integración y **12 métodos PTY**.
+- `make sanitize`: PASS fuera del sandbox, suite completa con ASan/UBSan.
+- `make tsan`: PASS, unitarias y 10 000 transferencias con capacidad 1.
+- `git diff --check`: sin errores.
+- Mismo PID y una sola entrada a pantalla alternativa al recorrer los tres casos.
+- Reinicio durante bloqueo, evidencia limpia y contadores reiniciados.
+- Menú sin pausa de trabajadores, ajuste del objetivo para productor y resize.
+- Marcador FIFO después de wraparound; modo ASCII y sin colores.
+- Fallos de creación en sesiones posteriores y SIGTERM desde el menú.
+- FIFO corrupto inyectado aunque los contadores coincidan: la UI muestra error,
+  nunca “FIFO verificado”. La inyección solo existe en el binario de pruebas.
+
+Los resultados anteriores y los PDFs académicos conservan su fecha original;
+esta sección, README y DEMO describen la interacción actual.

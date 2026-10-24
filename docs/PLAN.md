@@ -47,3 +47,14 @@ Las seis fases de código/documentación están implementadas y verificadas. Se
 agregó una fase de medios: paper IEEE compilado, presentación PDF, video técnico
 subtitulado, capturas y grabaciones de terminal originales. Pendientes humanos:
 identificación del equipo, revisión académica, exposición y entrega en ECampus.
+
+## Roadmap visual e interacción — completado el 24 de octubre de 2026
+
+- [x] Estados con causa de espera y progreso legible.
+- [x] Flujo visual de transferencias reales y marcador de próxima extracción FIFO.
+- [x] Evidencia histórica separada del estado actual; detalles opcionales con D.
+- [x] Controles contextuales, ritmo en milisegundos y resultado con validación FIFO.
+- [x] Menú M con tres escenarios y R para repetir sin relanzar el proceso.
+- [x] Cambio seguro durante esperas: cierre, join y monitor nuevo.
+- [x] Pruebas de cambios, reinicios, resize, errores y restauración de terminal.
+- [x] Guía y medios actualizados.

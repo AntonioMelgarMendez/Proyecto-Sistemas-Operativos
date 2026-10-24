@@ -12,9 +12,10 @@
       "--delay",
       "250"
     ],
-    "summary": "SUMMARY produced=12 consumed=12 remaining=0 waits_p=1 waits_c=0 status=OK",
+    "summary": "SUMMARY produced=12 consumed=12 remaining=0 waits_p=6 waits_c=0 status=OK",
     "blocked_observed": true,
     "details_view_recorded": true,
+    "menu_recorded": true,
     "terminal_restored": true
   },
   {
@@ -30,9 +31,10 @@
       "--delay",
       "250"
     ],
-    "summary": "SUMMARY produced=12 consumed=12 remaining=0 waits_p=0 waits_c=3 status=OK",
+    "summary": "SUMMARY produced=12 consumed=12 remaining=0 waits_p=0 waits_c=6 status=OK",
     "blocked_observed": true,
     "details_view_recorded": true,
+    "menu_recorded": true,
     "terminal_restored": true
   }
 ]

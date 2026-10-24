@@ -99,6 +99,7 @@ def record(encoder, scenario):
     next_frame = started
     blocked_at = complete_at = None
     resumed = quit_sent = details_sent = details_saved = False
+    menu_sent = menu_saved = menu_closed = False
     stem = 'productor' if scenario == 'producer' else 'consumidor'
     cast_path = MEDIA / (stem + '.cast')
     try:
@@ -135,10 +136,23 @@ def record(encoder, scenario):
                 if latest and 'COMPLETADO' in latest and complete_at is None:
                     complete_at = now
                     terminal_frame(latest, scenario, [
-                        'Espera → Señal → Reanudado: tres etapas, sin texto adicional.',
+                        'Evidencia histórica separada del estado actual.',
                         'D abre los índices, la cronología y los IDs de eventos.']).save(
                             MEDIA / (stem + '-completado.png'))
-                if complete_at is not None and now - complete_at >= 1 and not details_sent:
+                if complete_at is not None and now - complete_at >= 1 and not menu_sent:
+                    os.write(master, b'm')
+                    cast.write(json.dumps([round(now - started, 6), 'i', 'm']) + '\n')
+                    menu_sent = True
+                if menu_sent and not menu_saved and '1/2/3' in latest:
+                    terminal_frame(latest, scenario, [
+                        'M abre los modos; 1, 2 o 3 cambian de caso sin relanzar.',
+                        'R repite; el menú no pausa los trabajadores.']).save(MEDIA / 'menu-modos.png')
+                    menu_saved = True
+                if complete_at is not None and now - complete_at >= 3 and not menu_closed:
+                    os.write(master, b'm')
+                    cast.write(json.dumps([round(now - started, 6), 'i', 'm']) + '\n')
+                    menu_closed = True
+                if complete_at is not None and now - complete_at >= 3.5 and not details_sent:
                     os.write(master, b'd')
                     cast.write(json.dumps([round(now - started, 6), 'i', 'd']) + '\n')
                     details_sent = True
@@ -148,11 +162,14 @@ def record(encoder, scenario):
                         'D regresa a la vista visual sin alterar la sincronización.']).save(
                             MEDIA / (stem + '-detalles.png'))
                     details_saved = True
-                if complete_at is not None and now - complete_at >= 3 and not quit_sent:
+                if complete_at is not None and now - complete_at >= 5.5 and not quit_sent:
                     os.write(master, b'q')
                     quit_sent = True
                 if latest and now >= next_frame:
-                    if details_saved:
+                    if menu_sent and not menu_closed:
+                        caption = ['M: tres escenarios en la misma aplicación.',
+                                   '1/2/3 eligen un caso nuevo; R repite desde cero.']
+                    elif details_saved:
                         caption = ['D: detalles técnicos solo cuando los necesitas.',
                                    'Secuencia real de wait, signal y reanudación.']
                     elif complete_at is not None:
@@ -178,11 +195,11 @@ def record(encoder, scenario):
                     break
         if process.returncode != 0 or 'status=OK' not in all_output:
             raise RuntimeError(f'demo failed: {all_output[-500:]}')
-        if blocked_at is None or complete_at is None or not details_saved or termios.tcgetattr(slave) != original:
+        if blocked_at is None or complete_at is None or not details_saved or not menu_saved or termios.tcgetattr(slave) != original:
             raise RuntimeError('missing evidence or terminal not restored')
         summary = re.search(r'SUMMARY[^\r\n]+', all_output).group(0)
         return {'scenario': scenario, 'command': command, 'summary': summary,
-                'blocked_observed': True, 'details_view_recorded': True, 'terminal_restored': True}
+                'blocked_observed': True, 'details_view_recorded': True, 'menu_recorded': True, 'terminal_restored': True}
     finally:
         if process.poll() is None:
             process.kill()
