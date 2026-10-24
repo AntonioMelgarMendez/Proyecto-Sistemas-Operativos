@@ -17,7 +17,7 @@ static void usage(void)
          "  --plain         Traza de texto sin pantalla interactiva\n"
          "  --no-color      Desactivar colores\n"
          "  --help          Mostrar ayuda\n"
-         "Controles: Enter continuar demo, D detalles, +/- velocidad, Q salir.\n"
+         "Controles: Enter continuar/menu al terminar, M modos, R repetir, D detalles, +/- velocidad, Q salir.\n"
          "Sin terminal interactiva se activa modo texto automatico.");
 }
 

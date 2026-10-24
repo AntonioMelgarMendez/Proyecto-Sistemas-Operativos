@@ -6,7 +6,7 @@
 #include <termios.h>
 
 typedef struct {
-    bool active, color, unicode, details;
+    bool active, color, unicode, details, menu;
     struct termios saved;
     int rows, columns;
     uint64_t transfer_sequence, proof[5];
@@ -16,8 +16,9 @@ typedef struct {
 /* Falls back to plain output for pipes, TERM=dumb, or unavailable termios. */
 bool ui_open(Ui *ui, const Options *options);
 void ui_close(Ui *ui);
+void ui_reset_session(Ui *ui);
 int ui_key(Ui *ui, int timeout_ms);
 void ui_render(Ui *ui, const Options *options, const MonitorSnapshot *snapshot,
-               bool released, bool complete, int delay_ms);
+               bool released, bool complete, bool valid, int delay_ms);
 
 #endif

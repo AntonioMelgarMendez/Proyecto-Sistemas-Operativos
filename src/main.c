@@ -30,6 +30,87 @@ static void print_events(const MonitorSnapshot *snapshot, uint64_t *last)
     fflush(stdout);
 }
 
+static bool result_valid(const Simulation *s, const MonitorSnapshot *snapshot)
+{
+    return !atomic_load(&s->integrity_failed) &&
+           snapshot->produced == (uint64_t)s->options.items &&
+           snapshot->consumed == snapshot->produced && snapshot->count == 0;
+}
+
+/* One run owns its workers. Returning a requested mode does not create another
+ * run: main must stop/join/destroy this one first. The terminal stays open. */
+static int run_session(Simulation *s, Options *options, Ui *ui, bool visual,
+                       int *next_mode, bool *cancelled, MonitorSnapshot *snapshot)
+{
+    Actor first = options->scenario == SCENARIO_CONSUMER ? CONSUMER : PRODUCER;
+    Actor second = first == PRODUCER ? CONSUMER : PRODUCER;
+    bool released = options->scenario == SCENARIO_NORMAL;
+    int error = simulation_start(s, first);
+    if (error == 0 && released) error = simulation_start(s, second);
+    uint64_t last = 0;
+    double waiting_since = 0;
+    if (!visual) printf("MONITORES C17 | %s | capacity=%zu items=%d\n",
+                       scenario_name(options->scenario), options->capacity, options->items);
+    while (error == 0 && !interrupted) {
+        monitor_snapshot(s->monitor, snapshot);
+        bool complete = released && snapshot->state[PRODUCER] == FINISHED &&
+                        snapshot->state[CONSUMER] == FINISHED;
+        bool valid = complete && result_valid(s, snapshot);
+        if (visual) ui_render(ui, options, snapshot, released, complete, valid,
+                              atomic_load(&s->delay_ms));
+        else print_events(snapshot, &last);
+        if (complete && (!visual || options->automatic) && !ui->menu) break;
+        int key = ui_key(ui, visual ? 33 : 10);
+        if (key == 'q' || key == 'Q') { *cancelled = !complete; break; }
+        if (visual && (key == 'm' || key == 'M' ||
+                       (complete && (key == '\n' || key == '\r') && !ui->menu))) {
+            ui->menu = !ui->menu;
+            continue;
+        }
+        if (visual && (key == 'r' || key == 'R')) {
+            *next_mode = options->scenario;
+            break;
+        }
+        if (ui->menu) {
+            if (key >= '1' && key <= '3') {
+                *next_mode = key - '1';
+                break;
+            }
+            continue; /* Menu does not pause workers; suppress guided auto-start. */
+        }
+        if (key == 'd' || key == 'D') ui->details = !ui->details;
+        if (key == '+' || key == '-') {
+            int delay = atomic_load(&s->delay_ms) + (key == '+' ? -50 : 50);
+            if (delay < 0) delay = 0;
+            if (delay > 2000) delay = 2000;
+            atomic_store(&s->delay_ms, delay);
+        }
+        if (!released && snapshot->state[first] == WAITING) {
+            if (waiting_since == 0) waiting_since = monotonic_ms();
+            bool automatic = !visual || options->automatic;
+            bool proceed = automatic ? monotonic_ms() - waiting_since >= (visual ? 900 : 0)
+                                     : key == '\n' || key == '\r';
+            if (proceed) {
+                if (!visual) puts("DEMO: bloqueo observado bajo mutex; iniciando el otro hilo.");
+                error = simulation_start(s, second);
+                released = error == 0;
+            }
+        }
+    }
+    options->delay_ms = atomic_load(&s->delay_ms);
+    if (error != 0 || interrupted || *cancelled || *next_mode >= 0) simulation_stop(s);
+    int join_error = simulation_join(s);
+    if (join_error != 0) {
+        ui_close(ui);
+        /* Never destroy or replace resources if a worker could still own them. */
+        fprintf(stderr, "pthread_join: %s\n", strerror(join_error));
+        exit(EXIT_FAILURE);
+    }
+    monitor_snapshot(s->monitor, snapshot);
+    if (!visual) print_events(snapshot, &last);
+    return error;
+}
+
 int main(int argc, char **argv)
 {
     Options options;
@@ -43,74 +124,39 @@ int main(int argc, char **argv)
         perror("sigaction");
         return EXIT_FAILURE;
     }
-    Simulation simulation;
-    int error = simulation_init(&simulation, &options);
-    if (error != 0) { fprintf(stderr, "monitor: %s\n", strerror(error)); return 1; }
     Ui ui;
     bool visual = ui_open(&ui, &options);
-    bool cancelled = false;
-    double waiting_since = 0;
-    Actor first = options.scenario == SCENARIO_CONSUMER ? CONSUMER : PRODUCER;
-    Actor second = first == PRODUCER ? CONSUMER : PRODUCER;
-    bool released = options.scenario == SCENARIO_NORMAL;
-    error = simulation_start(&simulation, first);
-    if (error == 0 && released) error = simulation_start(&simulation, second);
-    uint64_t last = 0;
-    MonitorSnapshot snapshot;
-    if (!visual) printf("MONITORES C17 | %s | capacity=%zu items=%d\n",
-           scenario_name(options.scenario), options.capacity, options.items);
-    while (error == 0 && !interrupted && !cancelled) {
-        monitor_snapshot(simulation.monitor, &snapshot);
-        bool complete = released && snapshot.state[PRODUCER] == FINISHED &&
-                        snapshot.state[CONSUMER] == FINISHED;
-        if (visual) ui_render(&ui, &options, &snapshot, released, complete,
-                              atomic_load(&simulation.delay_ms));
-        else print_events(&snapshot, &last);
-        if (complete && (!visual || options.automatic)) break;
-        int key = ui_key(&ui, visual ? 33 : 10);
-        if (key == 'q' || key == 'Q') { cancelled = !complete; break; }
-        if (complete && (key == '\n' || key == '\r')) break;
-        if (key == 'd' || key == 'D') ui.details = !ui.details;
-        if (key == '+' || key == '-') {
-            int delay = atomic_load(&simulation.delay_ms) + (key == '+' ? -50 : 50);
-            if (delay < 0) delay = 0;
-            if (delay > 2000) delay = 2000;
-            atomic_store(&simulation.delay_ms, delay);
+    for (;;) {
+        Simulation simulation;
+        int error = simulation_init(&simulation, &options);
+        if (error != 0) {
+            ui_close(&ui);
+            fprintf(stderr, "monitor: %s\n", strerror(error));
+            return 1;
         }
-        if (!released && snapshot.state[first] == WAITING) {
-            if (waiting_since == 0) waiting_since = monotonic_ms();
-            bool automatic = !visual || options.automatic;
-            bool proceed = automatic ? monotonic_ms() - waiting_since >= (visual ? 900 : 0)
-                                     : key == '\n' || key == '\r';
-            if (proceed) {
-                if (!visual) puts("DEMO: bloqueo observado bajo mutex; iniciando el otro hilo.");
-                error = simulation_start(&simulation, second);
-                released = error == 0;
-            }
+        ui_reset_session(&ui);
+        MonitorSnapshot snapshot;
+        int next_mode = -1;
+        bool cancelled = false;
+        error = run_session(&simulation, &options, &ui, visual, &next_mode, &cancelled, &snapshot);
+        bool valid = result_valid(&simulation, &snapshot);
+        simulation_destroy(&simulation); /* Both workers already joined. */
+        if (next_mode >= 0 && error == 0 && !interrupted) {
+            options.scenario = (Scenario)next_mode;
+            options.automatic = false; /* Explicit menu choices are guided. */
+            if (options.scenario == SCENARIO_PRODUCER && (size_t)options.items <= options.capacity)
+                options.items = (int)options.capacity + 1;
+            continue;
         }
-    }
-    if (error != 0 || interrupted || cancelled) simulation_stop(&simulation);
-    int join_error = simulation_join(&simulation);
-    if (join_error != 0) {
-        /* Never destroy mutex/conditions if a worker could still own them. */
         ui_close(&ui);
-        fprintf(stderr, "pthread_join: %s\n", strerror(join_error));
-        return 1;
+        printf("SUMMARY produced=%" PRIu64 " consumed=%" PRIu64
+               " remaining=%zu waits_p=%" PRIu64 " waits_c=%" PRIu64 " status=%s\n",
+               snapshot.produced, snapshot.consumed, snapshot.count,
+               snapshot.waits[PRODUCER], snapshot.waits[CONSUMER],
+               (interrupted || cancelled) ? "CANCELLED" : valid && error == 0 ? "OK" : "ERROR");
+        if (error != 0) fprintf(stderr, "worker startup (pthread_create/sigmask): %s\n", strerror(error));
+        if (interrupted) return 128 + interrupted;
+        if (cancelled && error == 0) return 0;
+        return valid && error == 0 ? 0 : 1;
     }
-    monitor_snapshot(simulation.monitor, &snapshot);
-    ui_close(&ui);
-    if (!visual) print_events(&snapshot, &last);
-    bool valid = !atomic_load(&simulation.integrity_failed) &&
-                 snapshot.produced == (uint64_t)options.items &&
-                 snapshot.consumed == snapshot.produced && snapshot.count == 0;
-    printf("SUMMARY produced=%" PRIu64 " consumed=%" PRIu64
-           " remaining=%zu waits_p=%" PRIu64 " waits_c=%" PRIu64 " status=%s\n",
-           snapshot.produced, snapshot.consumed, snapshot.count,
-           snapshot.waits[PRODUCER], snapshot.waits[CONSUMER],
-           (interrupted || cancelled) ? "CANCELLED" : valid && error == 0 ? "OK" : "ERROR");
-    simulation_destroy(&simulation);
-    if (error != 0) fprintf(stderr, "worker startup (pthread_create/sigmask): %s\n", strerror(error));
-    if (interrupted) return 128 + interrupted;
-    if (cancelled && error == 0) return 0;
-    return valid && error == 0 ? 0 : 1;
 }

@@ -16,7 +16,7 @@
 #define CANVAS_ROWS 34
 #define CANVAS_COLUMNS 110
 
-typedef enum { NORMAL, MUTED, BRIGHT, PRODUCER_TONE, CONSUMER_TONE, WAIT_TONE, OK_TONE } Tone;
+typedef enum { NORMAL, MUTED, BRIGHT, PRODUCER_TONE, CONSUMER_TONE, WAIT_TONE, OK_TONE, ERROR_TONE } Tone;
 typedef struct { char glyph[5]; Tone tone; } Cell;
 typedef struct {
     Cell cells[CANVAS_ROWS][CANVAS_COLUMNS];
@@ -26,7 +26,7 @@ typedef struct {
 
 static const char *const tones[] = {
     "\033[0m", "\033[90m", "\033[1;37m", "\033[1;36m",
-    "\033[1;35m", "\033[1;33m", "\033[1;32m"
+    "\033[1;35m", "\033[1;33m", "\033[1;32m", "\033[1;31m"
 };
 
 static int smaller(int a, int b) { return a < b ? a : b; }
@@ -150,6 +150,15 @@ bool ui_open(Ui *ui, const Options *options)
     return true;
 }
 
+void ui_reset_session(Ui *ui)
+{
+    ui->details = false;
+    ui->menu = false;
+    ui->transfer_sequence = 0;
+    ui->flash_until = 0;
+    memset(ui->proof, 0, sizeof(ui->proof));
+}
+
 void ui_close(Ui *ui)
 {
     if (!ui->active) return;
@@ -208,15 +217,17 @@ static void worker_card(Canvas *c, int x, int width, Actor actor, const MonitorS
     Tone identity = actor == PRODUCER ? PRODUCER_TONE : CONSUMER_TONE;
     WorkerState state = s->state[actor];
     Tone status = state == WAITING ? WAIT_TONE : state == FINISHED ? OK_TONE : identity;
-    static const char *const names[] = { "Sin iniciar", "Activo", "En espera", "Terminado" };
+    static const char *const names[] = { "Pendiente de iniciar", "En ejecucion", "", "Terminado" };
+    const char *name = state == WAITING
+        ? (actor == PRODUCER ? "Esperando espacio" : "Esperando datos") : names[state];
     box(c, x, 4, width, 5, MUTED);
     put(c, x + 3, 4, identity, actor == PRODUCER ? " PRODUCTOR " : " CONSUMIDOR ");
     put(c, x + 3, 6, status, c->unicode ? (state == NOT_STARTED ? "○" : "●")
                                                       : (state == NOT_STARTED ? "o" : "*"));
-    put(c, x + 5, 6, status, names[state]);
+    put(c, x + 5, 6, status, name);
     uint64_t count = actor == PRODUCER ? s->produced : s->consumed;
     char numbers[40];
-    snprintf(numbers, sizeof(numbers), "%03" PRIu64 " / %03d", count, items);
+    snprintf(numbers, sizeof(numbers), "%" PRIu64 " de %d", count, items);
     put(c, x + 3, 7, BRIGHT, numbers);
     /* On narrow terminals, numbers already communicate progress. */
     if (width > text_width(numbers) + 16)
@@ -228,6 +239,7 @@ static int buffer_tiles(Canvas *c, const Options *o, const MonitorSnapshot *s,
                         const MonitorEvent *transfer, bool flash)
 {
     put(c, 2, 10, BRIGHT, "BUFFER");
+    if (s->count > 0) label(c, 14, 10, MUTED, "Proximo en salir: %03d", s->cells[s->head]);
     char occupancy[48];
     snprintf(occupancy, sizeof(occupancy), "%zu / %zu", s->count, s->capacity);
     put(c, c->columns - text_width(occupancy) - 2, 10,
@@ -240,9 +252,9 @@ static int buffer_tiles(Canvas *c, const Options *o, const MonitorSnapshot *s,
     int rows = ((int)s->capacity + per_row - 1) / per_row;
     /* Reserve space for status, the demo stages and controls at every capacity.
      * Very dense buffers use single-line cells rather than losing the footer. */
-    bool compact = 12 + (rows - 1) * 4 + 3 + 6 >= c->rows;
+    bool compact = 12 + (rows - 1) * 4 + 3 + 2 >= c->rows - 5;
     int pitch = compact ? 2 : 4;
-    if (compact && 12 + (rows - 1) * pitch + 1 + 3 >= c->rows - 3) pitch = 1;
+    if (compact && 12 + (rows - 1) * pitch + 1 + 2 >= c->rows - 5) pitch = 1;
     for (int row = 0; row < rows; ++row) {
         int count = smaller(per_row, (int)s->capacity - row * per_row);
         int start = (c->columns - (count * (width + 2) - 2)) / 2;
@@ -260,9 +272,14 @@ static int buffer_tiles(Canvas *c, const Options *o, const MonitorSnapshot *s,
             if (occupied) snprintf(value, sizeof(value), "%03d", s->cells[slot]);
             else snprintf(value, sizeof(value), "%s", c->unicode ? "·" : ".");
             if (compact) {
-                put(c, x, y, tone, highlighted ? "{" : "[");
+                put(c, x, y, tone, occupied && slot == s->head ? (c->unicode ? "›" : ">")
+                                                            : highlighted ? "{" : "[");
                 put(c, x + width - 1, y, tone, highlighted ? "}" : "]");
-            } else box(c, x, y, width, 3, tone);
+            } else {
+                box(c, x, y, width, 3, tone);
+                if (occupied && slot == s->head)
+                    put(c, x + width / 2, y, BRIGHT, c->unicode ? "▼" : "v");
+            }
             put(c, x + (width - text_width(value)) / 2, y + (compact ? 0 : 1), tone, value);
         }
     }
@@ -271,17 +288,50 @@ static int buffer_tiles(Canvas *c, const Options *o, const MonitorSnapshot *s,
 
 static void demo_stages(Canvas *c, const Ui *ui, int row)
 {
-    const char *labels[] = { "Espera", c->unicode ? "Señal" : "Senal", "Reanudado" };
-    bool observed[] = { ui->proof[0] != 0, ui->proof[2] != 0, ui->proof[4] != 0 };
-    int x = (c->columns - 44) / 2;
+    /* Historical evidence, deliberately separate from the live worker cards. */
+    const char *labels[] = { "Espero", "Recibio senal", "Continuo" };
+    bool observed[] = { ui->proof[0] != 0, ui->proof[3] != 0, ui->proof[4] != 0 };
+    int x = (c->columns - 61) / 2;
+    put(c, x, row, MUTED, "Evidencia:");
+    x += 12;
+    const int gaps[] = { 12, 20, 0 };
     for (int i = 0; i < 3; ++i) {
-        Tone tone = !observed[i] ? MUTED : i == 0 && !observed[2] ? WAIT_TONE : OK_TONE;
-        put(c, x, row, tone, c->unicode ? (observed[i] ? "●" : "○")
-                                                   : (observed[i] ? "*" : "o"));
+        Tone tone = observed[i] ? OK_TONE : MUTED;
+        put(c, x, row, tone, c->unicode ? (observed[i] ? "✓" : "○")
+                                                   : (observed[i] ? "+" : "o"));
         put(c, x + 2, row, tone, labels[i]);
-        if (i < 2) horizontal(c, x + 10, row, 3, MUTED);
-        x += 16;
+        x += gaps[i];
     }
+}
+
+static void flow(Canvas *c, const MonitorEvent *transfer, bool flash)
+{
+    const char *left = c->unicode ? "PRODUCTOR ── insertar → " : "PRODUCTOR -- insertar > ";
+    const char *right = c->unicode ? " ── extraer → CONSUMIDOR" : " -- extraer > CONSUMIDOR";
+    int x = (c->columns - text_width(left) - 6 - text_width(right)) / 2;
+    put(c, x, 9, flash && transfer->kind == EV_PUT ? PRODUCER_TONE : MUTED, left);
+    x += text_width(left);
+    put(c, x, 9, BRIGHT, "BUFFER");
+    put(c, x + 6, 9, flash && transfer->kind == EV_GET ? CONSUMER_TONE : MUTED, right);
+}
+
+static void scenario_menu(Canvas *c, const Options *o, bool complete)
+{
+    put(c, 2, 4, BRIGHT, "CAMBIAR CASO");
+    put(c, 2, 6, MUTED, "Elige un caso para iniciar una nueva ejecucion:");
+    put(c, 4, 8, PRODUCER_TONE, "[1] Productor bloqueado");
+    put(c, 8, 9, MUTED, "Llenar el buffer y esperar espacio.");
+    put(c, 4, 11, CONSUMER_TONE, "[2] Consumidor bloqueado");
+    put(c, 8, 12, MUTED, "Esperar datos con el buffer vacio.");
+    put(c, 4, 14, BRIGHT, "[3] Flujo continuo");
+    put(c, 8, 15, MUTED, "Ambos hilos trabajan desde el inicio.");
+    label(c, 2, 17, MUTED, "Capacidad %zu | Meta %d | Se reinician buffer y contadores.", o->capacity, o->items);
+    if ((size_t)o->items <= o->capacity)
+        label(c, 2, 18, WAIT_TONE, "Caso 1: meta ajustada a %zu para demostrar el bloqueo.", o->capacity + 1);
+    put(c, 2, 19, MUTED, complete ? "Caso finalizado. Puedes repetirlo o elegir otro."
+                                          : "El menu no pausa los hilos. Elegir otro caso cierra el actual.");
+    horizontal(c, 2, c->rows - 3, c->columns - 4, MUTED);
+    put(c, 2, c->rows - 2, MUTED, "1/2/3 Elegir   R Repetir   M Volver   Q Salir");
 }
 
 static void details(Canvas *c, const Ui *ui, const Options *o, const MonitorSnapshot *s,
@@ -299,7 +349,7 @@ static void details(Canvas *c, const Ui *ui, const Options *o, const MonitorSnap
           "     Buffer %zu/%zu", s->head, s->tail, s->waits[PRODUCER],
           s->waits[CONSUMER], s->count, s->capacity);
     put(c, 2, 11, BRIGHT, "EVENTOS RECIENTES");
-    int available = smaller(c->rows - 16, 10);
+    int available = smaller(c->rows - 18, 10);
     size_t count = s->event_count < (size_t)available ? s->event_count : (size_t)available;
     for (size_t i = 0; i < count; ++i) {
         const MonitorEvent *e = &s->events[s->event_count - count + i];
@@ -322,7 +372,7 @@ static void details(Canvas *c, const Ui *ui, const Options *o, const MonitorSnap
 }
 
 void ui_render(Ui *ui, const Options *o, const MonitorSnapshot *s,
-               bool released, bool complete, int delay_ms)
+               bool released, bool complete, bool valid, int delay_ms)
 {
     struct winsize size;
     ui->rows = 30;
@@ -341,21 +391,26 @@ void ui_render(Ui *ui, const Options *o, const MonitorSnapshot *s,
         put(c, 1, 1, BRIGHT, "MONITOR");
         put(c, 1, 3, WAIT_TONE, "amplia la terminal a 80 x 24");
         label(c, 1, 5, MUTED, "Buffer %zu/%zu   %s", s->count, s->capacity,
-              complete ? "COMPLETADO" : "En curso");
-        put(c, 1, 7, MUTED, "Enter continuar   Q salir");
+              complete ? (valid ? "COMPLETADO" : "ERROR") : "En curso");
+        put(c, 1, 7, MUTED, ui->menu ? "1/2/3 elegir  M volver  Q salir" : "M modos  R repetir  Q salir");
         present(ui, c);
         return;
     }
     const char *modes[] = { "01 / PRODUCTOR", "02 / CONSUMIDOR", "03 / FLUJO LIBRE" };
     put(c, 2, 1, BRIGHT, "MONITOR");
-    label(c, c->columns - 28, 1, MUTED, "%s   %4d ms", modes[o->scenario], delay_ms);
+    label(c, c->columns - 36, 1, MUTED, "%s   Ritmo: %d ms", modes[o->scenario], delay_ms);
     horizontal(c, 2, 2, c->columns - 4, MUTED);
+    if (ui->menu) {
+        scenario_menu(c, o, complete);
+        present(ui, c);
+        return;
+    }
     Actor first = o->scenario == SCENARIO_CONSUMER ? CONSUMER : PRODUCER;
     bool waiting = !released && s->state[first] == WAITING;
-    const char *status = complete ? "COMPLETADO" : waiting
+    const char *status = complete ? (valid ? "COMPLETADO - FIFO verificado" : "ERROR DE INTEGRIDAD") : waiting
         ? (first == PRODUCER ? "BUFFER LLENO" : "BUFFER VACIO")
         : !released ? "Preparando demo" : "En curso";
-    Tone status_tone = complete ? OK_TONE : waiting ? WAIT_TONE : MUTED;
+    Tone status_tone = complete ? (valid ? OK_TONE : ERROR_TONE) : waiting ? WAIT_TONE : MUTED;
     const MonitorEvent *transfer = last_transfer(s);
     if (transfer != NULL && transfer->sequence != ui->transfer_sequence) {
         ui->transfer_sequence = transfer->sequence;
@@ -367,21 +422,27 @@ void ui_render(Ui *ui, const Options *o, const MonitorSnapshot *s,
         int width = (c->columns - 8) / 2;
         worker_card(c, 2, width, PRODUCER, s, o->items);
         worker_card(c, c->columns - width - 2, width, CONSUMER, s, o->items);
+        flow(c, transfer, flash);
         int end = buffer_tiles(c, o, s, transfer, flash);
-        if (released && !complete && transfer != NULL) {
-            char motion[80];
-            snprintf(motion, sizeof(motion), "%s   #%03d",
-                     transfer->kind == EV_PUT ? (c->unicode ? "P → BUFFER" : "P > BUFFER")
-                                             : (c->unicode ? "BUFFER → C" : "BUFFER > C"), transfer->value);
-            centered(c, end + 1, transfer->kind == EV_PUT ? PRODUCER_TONE : CONSUMER_TONE, motion);
-        } else centered(c, end + 1, status_tone, status);
-        if (o->scenario != SCENARIO_NORMAL) demo_stages(c, ui, end + 3);
+        centered(c, end, status_tone, status);
+        char message[100] = "";
+        if (complete) {
+            snprintf(message, sizeof(message), "%" PRIu64 " producidos | %" PRIu64
+                     " consumidos | %zu pendientes", s->produced, s->consumed, s->count);
+        } else if (transfer != NULL) {
+            snprintf(message, sizeof(message), "Ultimo evento: %s %03d",
+                     transfer->kind == EV_PUT ? "productor inserto" : "consumidor retiro", transfer->value);
+        }
+        centered(c, end + 1, MUTED, message);
+        if (o->scenario != SCENARIO_NORMAL) demo_stages(c, ui, end + 2);
     }
     int footer = c->rows - 2;
-    horizontal(c, 2, footer - 1, c->columns - 4, MUTED);
-    const char *enter = complete ? "Enter cerrar" : waiting
-        ? (o->automatic ? "Auto continuar" : first == PRODUCER ? "Enter iniciar C" : "Enter iniciar P") : "";
-    label(c, 2, footer, MUTED, "%s%sD %s    +/- ritmo    Q salir", enter, *enter ? "    " : "",
+    horizontal(c, 2, footer - 3, c->columns - 4, MUTED);
+    const char *enter = complete ? "[Enter] Elegir otro caso" : waiting
+        ? (o->automatic ? "Continuacion automatica" : first == PRODUCER
+            ? "[Enter] Iniciar consumidor" : "[Enter] Iniciar productor") : "";
+    put(c, 2, footer - 2, waiting ? WAIT_TONE : BRIGHT, enter);
+    label(c, 2, footer, MUTED, "M Modos   R Repetir   D %s   +/- Velocidad   Q salir",
           ui->details ? "volver" : "detalles");
     present(ui, c);
 }

@@ -31,7 +31,7 @@ test: $(BUILD)/test-monitor
 .PHONY: check sanitize tsan
 $(BUILD)/test-demo-fail: $(SOURCES) tests/fail_create.c $(wildcard include/*.h)
 	@mkdir -p $(BUILD)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(SOURCES) tests/fail_create.c -Wl,--wrap=pthread_create $(LDLIBS) -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(SOURCES) tests/fail_create.c -Wl,--wrap=pthread_create -Wl,--wrap=monitor_get $(LDLIBS) -o $@
 
 check: all test $(BUILD)/test-demo-fail
 	python3 tests/test_integration.py $(BUILD)/monitor-demo
