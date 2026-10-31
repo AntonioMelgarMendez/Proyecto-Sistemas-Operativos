@@ -29,6 +29,7 @@ class Integration(unittest.TestCase):
         for scenario, actor, other, change, resume in [
             ('producer', 'P', 'C', 'GET', 'PUT'),
             ('consumer', 'C', 'P', 'PUT', 'GET'),
+            ('drain', 'C', 'P', 'PUT', 'GET'),
         ]:
             with self.subTest(scenario=scenario):
                 result = run('--plain', '--scenario', scenario, '--capacity', '2',
@@ -43,6 +44,23 @@ class Integration(unittest.TestCase):
                         cursor += 1
                 self.assertEqual(cursor, len(needed), result.stdout)
                 self.assertIn('DEMO: bloqueo observado bajo mutex', result.stdout)
+
+    def test_drain_preload_gets_precede_wait(self):
+        for capacity in (1, 3, 16):
+            for delay in (0, 10):
+                result = run('--plain', '--scenario', 'drain', '--capacity', str(capacity),
+                             '--items', str(capacity + 2), '--delay', str(delay))
+                self.assert_ok(result, capacity + 2)
+                self.assertIn('PREPARACION:', result.stdout)
+                events = re.findall(r'#\d+\s+[\d.]+ms\s+(\w+)\s+actor=(\w) count=(\d+) value=(\d+)', result.stdout)
+                wait = next(i for i, e in enumerate(events) if e[:2] == ('WAIT', 'C'))
+                gets = [int(e[3]) for e in events[:wait] if e[:2] == ('GET', 'C')]
+                self.assertEqual(gets, list(range(1, capacity + 1)))
+                self.assertEqual(events[wait][2], '0')
+                puts = [int(e[3]) for e in events[wait:] if e[:2] == ('PUT', 'P')]
+                self.assertEqual(puts, [capacity + 1, capacity + 2])
+        invalid = run('--scenario', 'drain', '--capacity', '3', '--items', '3')
+        self.assertEqual(invalid.returncode, 2)
 
     def test_stress_and_capacity(self):
         for capacity in (1, 2, 5, 16):
@@ -86,7 +104,7 @@ class Integration(unittest.TestCase):
 
     @unittest.skipUnless(Path(FAULT_BINARY).exists(), 'fault injection binary not built')
     def test_thread_creation_failures(self):
-        for scenario in ('producer', 'consumer', 'normal'):
+        for scenario in ('producer', 'consumer', 'normal', 'drain'):
             for fail_at in (1, 2):
                 with self.subTest(scenario=scenario, fail_at=fail_at):
                     result = subprocess.run([FAULT_BINARY, '--plain', '--scenario', scenario,

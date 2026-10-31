@@ -16,7 +16,8 @@ static void *producer(void *arg)
 {
     Simulation *s = arg;
     monitor_start(s->monitor, PRODUCER);
-    for (int i = 1; i <= s->options.items && !atomic_load(&s->stopping); ++i) {
+    int first = s->options.scenario == SCENARIO_DRAIN ? (int)s->options.capacity + 1 : 1;
+    for (int i = first; i <= s->options.items && !atomic_load(&s->stopping); ++i) {
         if (!monitor_put(s->monitor, i)) break;
         pace(s);
     }
@@ -44,7 +45,15 @@ int simulation_init(Simulation *s, const Options *o)
     atomic_init(&s->stopping, false);
     atomic_init(&s->integrity_failed, false);
     atomic_init(&s->delay_ms, o->delay_ms);
-    return monitor_create(&s->monitor, o->capacity);
+    int error = monitor_create(&s->monitor, o->capacity);
+    if (error != 0) return error;
+    /* Scenario setup only: no workers exist yet. Use the same protected FIFO
+     * operations; the later producer continues after these initial IDs. */
+    if (o->scenario == SCENARIO_DRAIN) {
+        for (size_t i = 1; i <= o->capacity; ++i)
+            (void)monitor_put(s->monitor, (int)i);
+    }
+    return 0;
 }
 
 int simulation_start(Simulation *s, Actor actor)

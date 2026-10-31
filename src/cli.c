@@ -9,7 +9,7 @@
 static void usage(void)
 {
     puts("Uso: monitor-demo [opciones]\n"
-         "  --scenario producer|consumer|normal  Demo (defecto: producer)\n"
+         "  --scenario producer|consumer|normal|drain  Demo (defecto: producer)\n"
          "  --capacity N    Capacidad 1..16 (defecto: 5)\n"
          "  --items N       Elementos 1..1000000 (defecto: 20)\n"
          "  --delay MS      Ritmo 0..2000 ms (defecto: 250)\n"
@@ -53,6 +53,7 @@ int options_parse(int argc, char **argv, Options *o)
         if (strcmp(arg, "--scenario") == 0) {
             if (strcmp(value, "producer") == 0) o->scenario = SCENARIO_PRODUCER;
             else if (strcmp(value, "consumer") == 0) o->scenario = SCENARIO_CONSUMER;
+            else if (strcmp(value, "drain") == 0) o->scenario = SCENARIO_DRAIN;
             else if (strcmp(value, "normal") == 0) o->scenario = SCENARIO_NORMAL;
             else { fprintf(stderr, "Escenario invalido: %s\n", value); return -1; }
         } else {
@@ -69,8 +70,8 @@ int options_parse(int argc, char **argv, Options *o)
             }
         }
     }
-    if (o->scenario == SCENARIO_PRODUCER && (size_t)o->items <= o->capacity) {
-        fputs("Demo producer requiere --items mayor que --capacity para bloquear.\n", stderr);
+    if ((o->scenario == SCENARIO_PRODUCER || o->scenario == SCENARIO_DRAIN) && (size_t)o->items <= o->capacity) {
+        fputs("Demo producer/drain requiere --items mayor que --capacity para bloquear.\n", stderr);
         return -1;
     }
     return 0;
@@ -79,7 +80,7 @@ int options_parse(int argc, char **argv, Options *o)
 const char *scenario_name(Scenario scenario)
 {
     static const char *const names[] = {
-        "Bloqueo del productor", "Bloqueo del consumidor", "Flujo continuo"
+        "Bloqueo del productor", "Bloqueo del consumidor", "Flujo continuo", "Vaciado y bloqueo del consumidor"
     };
     return names[scenario];
 }

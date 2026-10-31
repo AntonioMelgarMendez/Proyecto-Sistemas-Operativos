@@ -42,7 +42,7 @@ static bool result_valid(const Simulation *s, const MonitorSnapshot *snapshot)
 static int run_session(Simulation *s, Options *options, Ui *ui, bool visual,
                        int *next_mode, bool *cancelled, MonitorSnapshot *snapshot)
 {
-    Actor first = options->scenario == SCENARIO_CONSUMER ? CONSUMER : PRODUCER;
+    Actor first = (options->scenario == SCENARIO_CONSUMER || options->scenario == SCENARIO_DRAIN) ? CONSUMER : PRODUCER;
     Actor second = first == PRODUCER ? CONSUMER : PRODUCER;
     bool released = options->scenario == SCENARIO_NORMAL;
     int error = simulation_start(s, first);
@@ -51,6 +51,9 @@ static int run_session(Simulation *s, Options *options, Ui *ui, bool visual,
     double waiting_since = 0;
     if (!visual) printf("MONITORES C17 | %s | capacity=%zu items=%d\n",
                        scenario_name(options->scenario), options->capacity, options->items);
+    if (!visual && options->scenario == SCENARIO_DRAIN)
+        printf("PREPARACION: %zu elementos precargados sin hilos; consumidor vacia antes de WAIT.\n",
+               options->capacity);
     while (error == 0 && !interrupted) {
         monitor_snapshot(s->monitor, snapshot);
         bool complete = released && snapshot->state[PRODUCER] == FINISHED &&
@@ -72,7 +75,7 @@ static int run_session(Simulation *s, Options *options, Ui *ui, bool visual,
             break;
         }
         if (ui->menu) {
-            if (key >= '1' && key <= '3') {
+            if (key >= '1' && key <= '4') {
                 *next_mode = key - '1';
                 break;
             }
@@ -144,7 +147,7 @@ int main(int argc, char **argv)
         if (next_mode >= 0 && error == 0 && !interrupted) {
             options.scenario = (Scenario)next_mode;
             options.automatic = false; /* Explicit menu choices are guided. */
-            if (options.scenario == SCENARIO_PRODUCER && (size_t)options.items <= options.capacity)
+            if ((options.scenario == SCENARIO_PRODUCER || options.scenario == SCENARIO_DRAIN) && (size_t)options.items <= options.capacity)
                 options.items = (int)options.capacity + 1;
             continue;
         }

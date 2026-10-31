@@ -86,6 +86,51 @@ class Terminal:
 
 
 class TerminalTests(unittest.TestCase):
+    def test_drain_case_vacates_then_waits_and_restarts(self):
+        t = Terminal('--scenario', 'consumer', '--capacity', '3', '--items', '6', '--delay', '200', rows=24, columns=80)
+        try:
+            t.until_frame(b'BUFFER VACIO')
+            pid = t.process.pid
+            t.send(b'm')
+            t.until_frame(b'[4] Vaciar y esperar datos')
+            self.assertIn(b'1/2/3/4 Elegir', t.frame())
+            t.send(b'4')
+            t.until_frame(b'Vaciando buffer precargado')
+            self.assertIn(b'precargados sin hilo productor', t.frame())
+            t.until_frame(b'BUFFER VACIO')
+            self.assertIn(b'3 retirados', t.frame())
+            for _ in range(4):
+                t.read()
+            self.assertNotIn(b'COMPLETADO', t.frame())
+            t.send(b'\n')
+            t.until_frame(b'COMPLETADO - FIFO verificado')
+            self.assertEqual(t.process.pid, pid)
+            t.send(b'r')
+            t.until_frame(b'Vaciando buffer precargado')
+            t.until_frame(b'BUFFER VACIO')
+            t.send(b'q')
+            t.finish()
+            self.assertIn(b'status=CANCELLED', t.output)
+        finally:
+            t.close()
+
+    def test_drain_menu_adjusts_target(self):
+        t = Terminal('--scenario', 'consumer', '--capacity', '1', '--items', '1', '--delay', '0')
+        try:
+            t.until_frame(b'BUFFER VACIO')
+            t.send(b'm')
+            t.until_frame(b'meta ajustada a 2')
+            t.send(b'4')
+            t.until_frame(b'04 / VACIADO')
+            t.until_frame(b'BUFFER VACIO')
+            t.send(b'\n')
+            t.until_frame(b'COMPLETADO')
+            t.send(b'q')
+            t.finish()
+            self.assertIn(b'produced=2 consumed=2 remaining=0', t.output)
+        finally:
+            t.close()
+
     def test_guided_demos_colors_speed_and_finish(self):
         for scenario in ('producer', 'consumer'):
             with self.subTest(scenario=scenario):

@@ -318,20 +318,21 @@ static void flow(Canvas *c, const MonitorEvent *transfer, bool flash)
 static void scenario_menu(Canvas *c, const Options *o, bool complete)
 {
     put(c, 2, 4, BRIGHT, "CAMBIAR CASO");
-    put(c, 2, 6, MUTED, "Elige un caso para iniciar una nueva ejecucion:");
-    put(c, 4, 8, PRODUCER_TONE, "[1] Productor bloqueado");
-    put(c, 8, 9, MUTED, "Llenar el buffer y esperar espacio.");
-    put(c, 4, 11, CONSUMER_TONE, "[2] Consumidor bloqueado");
-    put(c, 8, 12, MUTED, "Esperar datos con el buffer vacio.");
-    put(c, 4, 14, BRIGHT, "[3] Flujo continuo");
-    put(c, 8, 15, MUTED, "Ambos hilos trabajan desde el inicio.");
-    label(c, 2, 17, MUTED, "Capacidad %zu | Meta %d | Se reinician buffer y contadores.", o->capacity, o->items);
-    if ((size_t)o->items <= o->capacity)
-        label(c, 2, 18, WAIT_TONE, "Caso 1: meta ajustada a %zu para demostrar el bloqueo.", o->capacity + 1);
-    put(c, 2, 19, MUTED, complete ? "Caso finalizado. Puedes repetirlo o elegir otro."
+    put(c, 2, 5, MUTED, complete ? "Caso finalizado. Puedes repetirlo o elegir otro."
                                           : "El menu no pausa los hilos. Elegir otro caso cierra el actual.");
+    put(c, 4, 7, PRODUCER_TONE, "[1] Productor bloqueado");
+    put(c, 8, 8, MUTED, "Llenar el buffer y esperar espacio.");
+    put(c, 4, 10, CONSUMER_TONE, "[2] Consumidor bloqueado");
+    put(c, 8, 11, MUTED, "Esperar datos con el buffer inicialmente vacio.");
+    put(c, 4, 13, BRIGHT, "[3] Flujo continuo");
+    put(c, 8, 14, MUTED, "Ambos hilos trabajan desde el inicio.");
+    put(c, 4, 16, CONSUMER_TONE, "[4] Vaciar y esperar datos");
+    put(c, 8, 17, MUTED, "Precarga inicial, vaciado, espera y reanudacion.");
+    label(c, 2, 18, MUTED, "Capacidad %zu | Meta %d | Se reinician buffer y contadores.", o->capacity, o->items);
+    if ((size_t)o->items <= o->capacity)
+        label(c, 2, 19, WAIT_TONE, "Casos 1 y 4: meta ajustada a %zu para demostrar el bloqueo.", o->capacity + 1);
     horizontal(c, 2, c->rows - 3, c->columns - 4, MUTED);
-    put(c, 2, c->rows - 2, MUTED, "1/2/3 Elegir   R Repetir   M Volver   Q Salir");
+    put(c, 2, c->rows - 2, MUTED, "1/2/3/4 Elegir   R Repetir   M Volver   Q Salir");
 }
 
 static void details(Canvas *c, const Ui *ui, const Options *o, const MonitorSnapshot *s,
@@ -392,11 +393,11 @@ void ui_render(Ui *ui, const Options *o, const MonitorSnapshot *s,
         put(c, 1, 3, WAIT_TONE, "amplia la terminal a 80 x 24");
         label(c, 1, 5, MUTED, "Buffer %zu/%zu   %s", s->count, s->capacity,
               complete ? (valid ? "COMPLETADO" : "ERROR") : "En curso");
-        put(c, 1, 7, MUTED, ui->menu ? "1/2/3 elegir  M volver  Q salir" : "M modos  R repetir  Q salir");
+        put(c, 1, 7, MUTED, ui->menu ? "1/2/3/4 elegir  M volver  Q salir" : "M modos  R repetir  Q salir");
         present(ui, c);
         return;
     }
-    const char *modes[] = { "01 / PRODUCTOR", "02 / CONSUMIDOR", "03 / FLUJO LIBRE" };
+    const char *modes[] = { "01 / PRODUCTOR", "02 / CONSUMIDOR", "03 / FLUJO LIBRE", "04 / VACIADO" };
     put(c, 2, 1, BRIGHT, "MONITOR");
     label(c, c->columns - 36, 1, MUTED, "%s   Ritmo: %d ms", modes[o->scenario], delay_ms);
     horizontal(c, 2, 2, c->columns - 4, MUTED);
@@ -405,11 +406,11 @@ void ui_render(Ui *ui, const Options *o, const MonitorSnapshot *s,
         present(ui, c);
         return;
     }
-    Actor first = o->scenario == SCENARIO_CONSUMER ? CONSUMER : PRODUCER;
+    Actor first = (o->scenario == SCENARIO_CONSUMER || o->scenario == SCENARIO_DRAIN) ? CONSUMER : PRODUCER;
     bool waiting = !released && s->state[first] == WAITING;
     const char *status = complete ? (valid ? "COMPLETADO - FIFO verificado" : "ERROR DE INTEGRIDAD") : waiting
         ? (first == PRODUCER ? "BUFFER LLENO" : "BUFFER VACIO")
-        : !released ? "Preparando demo" : "En curso";
+        : !released ? (o->scenario == SCENARIO_DRAIN ? "Vaciando buffer precargado" : "Preparando demo") : "En curso";
     Tone status_tone = complete ? (valid ? OK_TONE : ERROR_TONE) : waiting ? WAIT_TONE : MUTED;
     const MonitorEvent *transfer = last_transfer(s);
     if (transfer != NULL && transfer->sequence != ui->transfer_sequence) {
@@ -429,6 +430,9 @@ void ui_render(Ui *ui, const Options *o, const MonitorSnapshot *s,
         if (complete) {
             snprintf(message, sizeof(message), "%" PRIu64 " producidos | %" PRIu64
                      " consumidos | %zu pendientes", s->produced, s->consumed, s->count);
+        } else if (o->scenario == SCENARIO_DRAIN && !released) {
+            snprintf(message, sizeof(message), "Preparacion: %zu precargados sin hilo productor | %" PRIu64 " retirados",
+                     o->capacity, s->consumed);
         } else if (transfer != NULL) {
             snprintf(message, sizeof(message), "Ultimo evento: %s %03d",
                      transfer->kind == EV_PUT ? "productor inserto" : "consumidor retiro", transfer->value);

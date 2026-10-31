@@ -4,7 +4,7 @@
 #include "monitor.h"
 #include <stdbool.h>
 
-typedef enum { SCENARIO_PRODUCER, SCENARIO_CONSUMER, SCENARIO_NORMAL } Scenario;
+typedef enum { SCENARIO_PRODUCER, SCENARIO_CONSUMER, SCENARIO_NORMAL, SCENARIO_DRAIN } Scenario;
 typedef struct {
     Scenario scenario;
     size_t capacity;
