@@ -67,3 +67,19 @@ varían entre ejecuciones; no se publican como un benchmark.
 
 Los resultados anteriores y los PDFs académicos conservan su fecha original;
 esta sección, README y DEMO describen la interacción actual.
+
+## Caso de vaciado — 31 de octubre de 2026
+
+- Entorno verificado con `/etc/os-release`: Ubuntu 26.04 LTS, Resolute Raccoon.
+- `make check`: PASS, unitarias, 7 métodos de integración y 14 métodos PTY.
+- `make sanitize`: PASS fuera del sandbox, misma suite ASan/UBSan.
+- `make tsan`: PASS; además `--plain --scenario drain --capacity 16 --items 10000
+  --delay 0` bajo TSan finalizó con 10 000 producidos/consumidos y status=OK.
+- Traza de drain: capacidades 1, 3 y 16, ritmos 0 y 10 ms; todas las extracciones
+  de la precarga preceden al primer WAIT del consumidor. El productor continúa
+  con el ID siguiente; sin pérdidas ni duplicados.
+- PTY 80×24: opción 4 visible, vaciado antes de espera, Enter, resultado válido,
+  repetición y cancelación con restauración de terminal. Ajuste de meta probado.
+- Fallos inyectados de creación de ambos trabajadores también cubren drain.
+- Capturas nuevas de ejecución real: vaciado-en-curso.png y vaciado-bloqueado.png.
+  El video y los casts anteriores siguen mostrando los casos 1 y 2, no el nuevo 4.

@@ -108,3 +108,13 @@ texto lo informa. No se pierden elementos: el consumidor valida cada ID FIFO.
 - [ ] Revisar video técnico y agregar exposición del equipo si el docente la exige.
 - [ ] Adjuntar código, paper, presentación y video en ECampus antes de la fecha.
 - [ ] Confirmar hora/fecha y cualquier validación mediante Teams con el docente.
+
+## Caso adicional: vaciado visible (M → 4)
+
+Para demostrar literalmente “vaciar el búfer”, elegir 4 en el menú con ritmo
+350 ms: observar las celdas precargadas desaparecer, el contador de retirados
+llegar a la capacidad y luego BUFFER VACIO / Esperando datos. Explicar que la
+precarga es preparación del escenario, no una ejecución previa del productor.
+Enter inicia al productor; D permite ver WAIT → PUT → SIGNAL → WAKE → GET.
+El ID nuevo continúa después de los precargados y el resultado valida FIFO.
+El caso 2 sigue disponible para mostrar una espera con búfer inicialmente vacío.

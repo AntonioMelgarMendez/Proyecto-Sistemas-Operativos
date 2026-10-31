@@ -26,7 +26,7 @@ En una terminal de al menos **80×24** (recomendado **110×34**):
 - **D**: alternar entre vista visual y detalles técnicos.
 - **+ / -**: aumentar/reducir velocidad (menos/más milisegundos entre operaciones).
 - **Q**: cierre cooperativo, incluso durante una espera.
-- **M**: abrir/cerrar el menú; **1 / 2 / 3** seleccionan productor, consumidor o flujo normal.
+- **M**: abrir/cerrar el menú; **1 / 2 / 3 / 4** seleccionan productor, consumidor, flujo normal o vaciado.
 - **R**: repetir el caso actual desde cero.
 - **Enter al terminar**: abrir el menú para elegir otro caso; **Q** sale.
 - `Ctrl+C`, `SIGTERM` y `SIGQUIT`: cerrar y restaurar la terminal.
@@ -58,7 +58,7 @@ el estado y los controles. `--plain` conserva la traza completa en texto.
 ### Cambiar de caso sin reiniciar el programa
 
 Pulsa **M**, luego **1** (bloqueo del productor), **2** (bloqueo del consumidor)
-o **3** (flujo normal). **R** repite el escenario actual. El menú **no pausa** los
+**3** (flujo normal) o **4** (vaciar y esperar datos). **R** repite el escenario actual. El menú **no pausa** los
 hilos: al elegir, se cancela cooperativamente la ejecución anterior, se unen sus
 hilos y se crea un monitor nuevo. Contadores y evidencia vuelven a cero.
 
@@ -82,7 +82,7 @@ la validación de secuencia y los contadores confirman una ejecución correcta.
 
 | Opción | Valores | Defecto |
 |---|---|---|
-| `--scenario` | `producer`, `consumer`, `normal` | `producer` |
+| `--scenario` | `producer`, `consumer`, `normal`, `drain` | `producer` |
 | `--capacity` | 1–16 | 5 |
 | `--items` | 1–1 000 000 | 20 |
 | `--delay` | 0–2000 ms | 250 |
@@ -211,3 +211,22 @@ make media
 El script ejecuta el binario real en una pseudoterminal, conserva las grabaciones
 `.cast`, genera capturas y codifica un MP4 con explicaciones en español. No tiene
 narración de voz ni reemplaza la exposición del equipo.
+
+### Caso 4: vaciar antes de bloquear
+
+**M → 4** inicia con `capacity` elementos precargados como preparación, sin
+hilos activos. El consumidor retira esos elementos en orden y, al intentar otra
+extracción, espera en `not_empty`. **Enter** inicia el productor con el siguiente
+ID; su inserción y señal permiten reanudar al consumidor. R repite el caso.
+
+```sh
+./build/monitor-demo --scenario drain --capacity 5 --items 12 --delay 350
+```
+
+`--items` cuenta todos los elementos, incluida la precarga, y debe superar la
+capacidad en `drain`. Desde el menú se ajusta automáticamente si hace falta.
+La UI identifica la preparación; los contadores incluyen esos elementos iniciales.
+Usar un ritmo de 200–500 ms permite observar el vaciado; a ritmo cero puede pasar
+entre dos frames, pero la traza conserva las extracciones anteriores a WAIT.
+
+Entorno confirmado en `/etc/os-release`: **Ubuntu 26.04 LTS (Resolute Raccoon)**.

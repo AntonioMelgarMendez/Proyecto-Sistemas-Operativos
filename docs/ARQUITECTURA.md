@@ -126,3 +126,15 @@ ritmo elegido y se desactiva la continuación automática al seleccionar un caso
 La evidencia de recepción se marca al observar WAKE, no al emitir SIGNAL;
 no supone transferencia inmediata del mutex. El banner de éxito comprueba la
 integridad FIFO y los contadores, no solamente que ambos hilos hayan terminado.
+
+## Caso drain: preparación sin nuevos mecanismos de sincronización
+
+`simulation_init` precarga exactamente la capacidad mediante `monitor_put`,
+antes de crear trabajadores. No puede esperar por lleno: nunca intenta insertar
+más de esa capacidad. Solo se inicia el consumidor; el monitor permanece abierto
+cuando termina de extraer la precarga, por lo que la siguiente extracción espera.
+El productor se crea tras observar WAIT y continúa desde `capacity + 1` hasta
+`items`; la verificación del consumidor comienza en 1 e incluye la precarga.
+No se agregan mutexes, condiciones, semáforos ni pausas bajo el mutex. Las señales
+de preparación no son permisos almacenados: la prueba de reanudación empieza en
+el WAIT del consumidor y exige una nueva inserción posterior.

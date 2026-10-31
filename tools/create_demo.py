@@ -50,7 +50,8 @@ def card(kicker, title, lines, footer='Proyecto 7 | C17 + POSIX Threads | Sin se
 def terminal_frame(frame, scenario, caption):
     image = Image.new('RGB', (WIDTH, HEIGHT), BG)
     draw = ImageDraw.Draw(image)
-    name = 'PRODUCTOR BLOQUEADO' if scenario == 'producer' else 'CONSUMIDOR BLOQUEADO'
+    name = {'producer': 'PRODUCTOR BLOQUEADO', 'consumer': 'CONSUMIDOR BLOQUEADO',
+            'drain': 'VACIADO Y ESPERA'}.get(scenario, 'MONITOR')
     draw.text((50, 24), name + ' / EJECUCIÓN REAL', font=BODY, fill=CYAN)
     draw.rounded_rectangle((45, 76, 1235, 666), 15, fill=PANEL, outline='#2a3c53', width=2)
     x0, y0, char_width = 65, 85, MONO.getlength('M')
@@ -145,7 +146,7 @@ def record(encoder, scenario):
                     menu_sent = True
                 if menu_sent and not menu_saved and '1/2/3' in latest:
                     terminal_frame(latest, scenario, [
-                        'M abre los modos; 1, 2 o 3 cambian de caso sin relanzar.',
+                        'M abre los modos; 1, 2, 3 o 4 cambian de caso sin relanzar.',
                         'R repite; el menú no pausa los trabajadores.']).save(MEDIA / 'menu-modos.png')
                     menu_saved = True
                 if complete_at is not None and now - complete_at >= 3 and not menu_closed:
@@ -167,8 +168,8 @@ def record(encoder, scenario):
                     quit_sent = True
                 if latest and now >= next_frame:
                     if menu_sent and not menu_closed:
-                        caption = ['M: tres escenarios en la misma aplicación.',
-                                   '1/2/3 eligen un caso nuevo; R repite desde cero.']
+                        caption = ['M: cuatro escenarios en la misma aplicación.',
+                                   '1/2/3/4 eligen un caso nuevo; R repite desde cero.']
                     elif details_saved:
                         caption = ['D: detalles técnicos solo cuando los necesitas.',
                                    'Secuencia real de wait, signal y reanudación.']

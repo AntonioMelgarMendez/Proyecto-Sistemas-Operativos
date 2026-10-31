@@ -58,3 +58,9 @@ identificación del equipo, revisión académica, exposición y entrega en ECamp
 - [x] Cambio seguro durante esperas: cierre, join y monitor nuevo.
 - [x] Pruebas de cambios, reinicios, resize, errores y restauración de terminal.
 - [x] Guía y medios actualizados.
+
+## Extensión — 31 de octubre de 2026
+
+- [x] Caso 4 / drain: precarga identificada, vaciado, espera y reanudación real.
+- [x] Mantener el caso 2 inicialmente vacío y los controles sin relanzamiento.
+- [x] Validación FIFO, PTY, errores, ASan/UBSan y TSan; guía y capturas nuevas.

@@ -40,3 +40,11 @@ si el docente la exige. Ver ../DEMO.md para una exposición de 6–8 minutos.
 Las dos grabaciones arrancan procesos independientes para explicar cada bloqueo.
 El cambio entre modos dentro de un mismo proceso se valida en `tests/test_terminal.py`;
 no se presenta este montaje como una grabación de esos cambios.
+
+### Caso 4 — capturas del 31 de octubre de 2026
+
+`vaciado-en-curso.png` y `vaciado-bloqueado.png` muestran el binario real con
+`--scenario drain --capacity 5 --items 12 --delay 350` en PTY 110×30.
+La precarga se identifica como preparación sin hilo productor. El menú actualizado
+incluye cuatro casos. El MP4 y los casts conservan la grabación anterior de los
+casos 1 y 2; no contienen todavía el caso 4.
